@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>사주포차 거리 2030 — 월드모델 파일럿</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <!-- 입장 화면 -->
+  <section id="intro" class="overlay">
+    <div class="card intro">
+      <div class="kicker">2030 월드모델 · 파일럿</div>
+      <h1>🏮 사주포차 거리</h1>
+      <p class="lead">비 오는 강변, 포장마차 불빛 아래.<br />내 사주를 아는 사장님에게 오늘의 고민을 털어놔요.</p>
+      <div class="me-preview">
+        <div><span class="muted">오늘 밤 내 이름</span><b id="my-name">-</b></div>
+        <button id="reroll" class="ghost small">🎲 다시</button>
+      </div>
+      <label class="field">생년월일 (양력)
+        <input id="birth" type="date" min="1940-01-01" max="2025-12-31" value="2000-01-01" />
+      </label>
+      <label class="field">태어난 시간
+        <select id="hour">
+          <option value="">모름</option>
+        </select>
+      </label>
+      <p class="tiny muted">생년월일은 이 기기 안에서만 계산돼요. 다른 손님에게는 대표 오행(예: 水) 하나만 보여요. 사주는 재미로 보는 거울이에요.</p>
+      <button id="enter" class="primary">포차 거리 입장</button>
+      <button id="enter-skip" class="ghost">사주 없이 구경만</button>
+    </div>
+  </section>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="status" class="pill">오프라인 미리보기</div>
+    <div id="weather" class="pill weather">-</div>
+  </div>
+  <div id="topright" class="hidden">
+    <button id="btn-sound" class="round" title="소리">🔊</button>
+    <button id="btn-card" class="round" title="내 사주">📜</button>
+  </div>
+  <div id="hint" class="hint hidden">드래그로 둘러보기 · WASD/조이스틱으로 걷기 · 빈 의자에 가까이 가면 앉을 수 있어요</div>
+  <button id="btn-sit" class="action hidden">🪑 앉기</button>
+  <div id="joy" class="hidden"><div id="joy-knob"></div></div>
+  <div id="toast" class="toast"></div>
+
+  <!-- 상담 패널 -->
+  <aside id="panel" class="panel hidden">
+    <header>
+      <div>
+        <div class="muted tiny" id="stall-name">-</div>
+        <b id="counselor-name">-</b>
+      </div>
+      <div class="row">
+        <button id="btn-cheers" class="ghost small">🍶 건배</button>
+        <button id="btn-stand" class="ghost small">일어나기</button>
+      </div>
+    </header>
+    <div id="log" class="log"></div>
+    <div class="chips" id="chips"></div>
+    <form id="ask" class="ask">
+      <input id="q" maxlength="300" placeholder="요즘 고민을 적어보세요" autocomplete="off" />
+      <button class="primary small">보내기</button>
+    </form>
+    <details class="restyle">
+      <summary>✨ 상담사 스타일 바꾸기 <span class="muted tiny">(거리의 모두에게 보여요)</span></summary>
+      <form id="style-form" class="ask">
+        <input id="style-q" maxlength="80" placeholder="예: 부산 사투리 무뚝뚝한 아재" autocomplete="off" />
+        <button class="small">변신</button>
+      </form>
+      <div class="chips" id="style-chips"></div>
+    </details>
+  </aside>
+
+  <!-- 사주 카드 -->
+  <section id="cardview" class="overlay hidden">
+    <div class="card saju-card" id="saju-card"></div>
+  </section>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
