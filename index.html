@@ -119,14 +119,11 @@
   </form>
   <div id="ctx" class="ctx">
     <button id="btn-bungeo" class="act hidden">🐟 붕어빵 사기</button>
-    <button id="btn-ticket" class="act hidden">🎭 즉석 연극 보기</button>
     <button id="btn-clap" class="act hidden">👏 박수</button>
     <button id="btn-request" class="act hidden">🎸 신청곡</button>
-    <button id="btn-goplay" class="act hidden">🎭 연극 보러 가기</button>
     <button id="btn-photo" class="act hidden">📸 사주네컷 찍기</button>
+    <button id="btn-wall" class="act hidden">📝 고민 벽 보기</button>
   </div>
-  <div id="subtitle" class="subtitle hidden"></div>
-  <div id="title-card" class="title-card hidden"><div class="kicker">마로니에 야외무대 · 즉석 연극</div><b></b><span></span></div>
 
   <section id="theme-modal" class="overlay hidden">
     <div class="card modal-card">
@@ -138,18 +135,6 @@
       </form>
       <div class="chips flat" id="theme-chips"></div>
       <button class="ghost small close-modal">닫기</button>
-    </div>
-  </section>
-  <section id="play-modal" class="overlay hidden">
-    <div class="card modal-card">
-      <div class="kicker">소극장 호객 알바 · 즉석 연극</div>
-      <h2>🎭 오늘 밤 무슨 연극 볼래요?</h2>
-      <p class="muted tiny">주제를 주면 AI 작가가 1분짜리 대본을 쓰고, 마로니에 야외무대에서 바로 올려요. 거리의 모두가 같이 봐요.</p>
-      <form id="play-form" class="ask flat">
-        <input id="play-q" maxlength="60" placeholder="예: 막차 놓친 취준생의 하루 (비워도 돼요)" autocomplete="off" />
-        <button class="primary small">공연 시작</button>
-      </form>
-      <button class="ghost small close-modal">다음에요</button>
     </div>
   </section>
   <section id="song-modal" class="overlay hidden">
@@ -184,6 +169,26 @@
         <a id="photo-save" class="primary small" download="사주네컷.png">💾 저장하기</a>
         <button class="ghost small close-modal">닫기</button>
       </div>
+    </div>
+  </section>
+
+  <section id="wall-modal" class="overlay hidden">
+    <div class="card wall-card">
+      <header class="set-head"><div><div class="kicker">마로니에 고민 벽 · 익명</div><h2>📝 오늘 밤의 고민들</h2></div><button class="round close-modal" aria-label="닫기">✕</button></header>
+      <form id="wall-form" class="wall-form">
+        <textarea id="wall-q" maxlength="80" rows="2" placeholder="이름 없이 고민을 붙여요 (80자). 포차 사장님이 짧은 답을 달아줘요."></textarea>
+        <div class="row between"><span class="muted tiny" id="wall-count">0/80 · 연락처·실명은 적지 마세요</span><button class="primary small">붙이기</button></div>
+      </form>
+      <div id="wall-note" class="muted tiny"></div>
+      <div id="wall-grid" class="wall-grid"></div>
+    </div>
+  </section>
+  <section id="care-modal" class="overlay hidden">
+    <div class="card modal-card">
+      <h2>🍵 많이 힘들었구나</h2>
+      <p>그 마음은 벽에 붙이기보다, 지금 바로 이야기 나눌 사람이 필요해 보여요. 혼자 견디지 않아도 돼요.</p>
+      <p class="muted">자살예방상담전화 <b>109</b> (24시간) · 정신건강위기상담 <b>1577-0199</b><br />가까운 사람에게 지금 연락해 보는 것도 좋아요.</p>
+      <button class="ghost small close-modal">알겠어요</button>
     </div>
   </section>
 

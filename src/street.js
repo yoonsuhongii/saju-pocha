@@ -3,8 +3,6 @@
 import * as THREE from 'three';
 import { makeCharacter, animateCharacter, nameSprite, randomLook } from './character.js';
 import { STAGE } from './scene.js';
-import { createTheater, PLAY_PRESETS } from './theater.js';
-export { PLAY_PRESETS };
 
 const h = (n) => { const x = Math.sin(n * 91.7 + 13.3) * 43758.5453; return x - Math.floor(x); };
 const mod = (a, n) => ((a % n) + n) % n;
@@ -65,17 +63,6 @@ export function buildStreet(scene, { high = true } = {}) {
   const mic = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.4, 6), std(0x222222, { metalness: 0.7 })); mic.position.set(STAGE.x + 0.5, 1.3, STAGE.z - 0.7); scene.add(mic);
   const amp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.35), std(0x1a1a1a)); amp.position.set(STAGE.x - 1, 0.85, STAGE.z - 1.6); scene.add(amp);
   const btag = nameSprite('버스커 · 야외무대', { bg: 'rgba(40,60,160,0.8)', scale: 0.85 }); btag.position.y = 1.95; busker.add(btag);
-  // ---------- 소극장 호객꾼 ----------
-  const barker = makeCharacter({ skin: '#ffe0c7', hair: '#1a1a1a', hairStyle: 'ponytail', outfit: '#e03131', apron: null, accessory: 'hat', accessoryColor: '#212529', height: 0.98, eyes: 'dot' });
-  barker.position.set(-2, 0, 9.7); barker.rotation.y = Math.PI; scene.add(barker);
-  const ttag = nameSprite('🎭 소극장 호객 알바', { bg: 'rgba(160,30,60,0.8)', scale: 0.85 }); ttag.position.y = 1.95; barker.add(ttag);
-  const booth = new THREE.Group();
-  const tb = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 0.6), std(0x6b2c1f)); tb.position.y = 0.4; booth.add(tb);
-  const bs = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), new THREE.MeshBasicMaterial({ map: textTex(256, 160, (g) => { g.fillStyle = '#fff4dc'; g.fillRect(0, 0, 256, 160); g.fillStyle = '#c2255c'; g.font = `900 40px ${FONT}`; g.textAlign = 'center'; g.fillText('즉석 연극', 128, 58); g.fillStyle = '#333'; g.font = `700 26px ${FONT}`; g.fillText('오늘 밤 · 무료', 128, 100); g.fillText('야외무대 상연', 128, 136); }), toneMapped: false }));
-  bs.position.set(0, 1.25, -0.31); bs.rotation.y = Math.PI; booth.add(bs);
-  booth.position.set(-0.6, 0, 9.9); scene.add(booth);
-  // ---------- 연극 배우 ----------
-  const theater = createTheater(scene, { high, busker });
   // ---------- 테마 장식 + 현수막 ----------
   const decor = new THREE.Group(); scene.add(decor);
   const bannerCanvas = document.createElement('canvas'); bannerCanvas.width = 1024; bannerCanvas.height = 128;
@@ -86,8 +73,8 @@ export function buildStreet(scene, { high = true } = {}) {
 
   let pedPalette = null;
   const S = {
-    peds, cars, busker, barker, theater,
-    get play() { return theater.play; },
+    peds, cars, busker,
+    play: null,
     rushId: -1,
     update(nowSec, dt, now, me) {
       // 행인
@@ -132,10 +119,7 @@ export function buildStreet(scene, { high = true } = {}) {
       animateCharacter(busker, { cook: !aside, talk: !aside }, now);
       busker.visible = !aside;
       busker.rotation.y = aside ? -0.6 : Math.sin(now / 1500) * 0.15;
-      animateCharacter(barker, { wave: Math.sin(now / 900) > 0.4, talk: true }, now);
-      barker.rotation.y = Math.PI + Math.sin(now / 1300) * 0.3;
       // 연극
-      theater.update(Date.now(), now, dt);
     },
     nearCar(x, z) { return cars.some((c) => c.braking || (Math.abs(c.mesh.position.x - x) < 2.6 && Math.abs(c.lane - z) < 1.2)); },
     carBoxes() { return cars.map((c) => ({ x: c.mesh.position.x, z: c.lane, hx: c.isBike ? 0.8 : 1.85, hz: c.isBike ? 0.35 : 0.85 })); },
@@ -143,12 +127,10 @@ export function buildStreet(scene, { high = true } = {}) {
       const out = [];
       peds.forEach((p) => out.push({ x: p.char.position.x, z: p.char.position.z, r: 0.3, kind: 'person' }));
       rush.forEach((c) => { if (c.visible) out.push({ x: c.position.x, z: c.position.z, r: 0.3, kind: 'person' }); });
-      out.push({ x: barker.position.x, z: barker.position.z, r: 0.35, kind: 'person' }, { x: -0.6, z: 9.9, r: 0.8 });
       return out;
     },
 
     // ---------- 연극 ----------
-    startPlay(script, startAt, hooks) { theater.start(script, startAt, hooks); },
 
     // ---------- 테마 ----------
     applyTheme(th) {
@@ -197,7 +179,7 @@ export function buildStreet(scene, { high = true } = {}) {
         add(signPlane(th.gate || th.title, 6.4, 0.9, S2.sign[0], S2.sign[1]), 0, 4.2, -6.3);
         // 부스 (포차 사이 빈칸, 거리를 향함)
         const booths = th.booths?.length ? th.booths : [th.title];
-        [-36, -12, 12, 36].forEach((x, i) => {
+        [-36, -12, 24, 36].forEach((x, i) => {
           const tent = new THREE.Group();
           const top = new THREE.Mesh(new THREE.ConeGeometry(2.1, 1.2, 4), std(S2.tent, { flatShading: true, emissive: S2.tent, emissiveIntensity: 0.25 })); top.rotation.y = Math.PI / 4; top.position.y = 2.9; tent.add(top);
           [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]].forEach(([px, pz]) => { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.3, 6), std(0xdddddd)); p.position.set(px, 1.15, pz); tent.add(p); });

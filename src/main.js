@@ -8,15 +8,16 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildStreet, PLAY_PRESETS } from './street.js';
+import { buildStreet } from './street.js';
 import { buildBooth, inBooth, composeStrip, BOOTH } from './photobooth.js';
+import { createWall, checkWorry, EL_COLOR, WALL } from './wall.js';
 import { tickMusic, SONGS } from './music.js';
 import { buildScene, updateWeather, themeWeather, STAGE, OBSTACLES, drawStallSign, setStallColor, itemMesh, MENU, MENU_BY_ID, SNACK_BY_EL, BUNGEO_POS, STALL_COUNT, STALL_X, SEAT_OFFSETS, SEAT_Z, COUNTER_Z } from './scene.js';
 import { makeCharacter, animateCharacter, nameSprite, bubbleSprite, randomLook, randomName } from './character.js';
 import { Player, Avatar, createInput } from './player.js';
 import { connect, botGuests, botChatter, mixWeather, ONLINE_CAPABLE } from './net.js';
 import { calcSaju, todayFortune, snackFor, sajuSummary, sajuDetail, luckContext, ELEMENTS, relation } from './saju.js';
-import { makePersona, counsel, stallDefault, neighbor, cleanChat, styleize, makePlay, makeTheme } from './ai.js';
+import { makePersona, counsel, stallDefault, neighbor, cleanChat, styleize, makeTheme, wallReply } from './ai.js';
 import { startAudio, setRain, clink, toggleSound, clap, honk, setVolume, isOn, VOL, sfx } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -110,10 +111,26 @@ const me = {
 };
 let player = null, input = null, net = null, entered = false;
 
+// ---------------- 단골 기억 (내 브라우저에만 저장) ----------------
+const MEM_KEY = 'pocha-memory';
+const mem = (() => { try { return JSON.parse(localStorage.getItem(MEM_KEY) || 'null') || { visits: 0, stalls: {} }; } catch { return { visits: 0, stalls: {} }; } })();
+const saveMem = () => { try { localStorage.setItem(MEM_KEY, JSON.stringify(mem)); } catch { /* 저장 불가 */ } };
+function rememberWorry(i, text) {
+  const st = (mem.stalls[i] = mem.stalls[i] || { worries: [] });
+  st.persona = stallState[i].persona.name; st.at = Date.now();
+  st.worries = [...st.worries.filter((w) => w !== text), text].slice(-3);
+  mem.last = { stall: i, persona: st.persona, text, at: Date.now() };
+  saveMem();
+}
+function agoText(t) { const d = (Date.now() - t) / 86400000; return d < 1 ? '아까' : d < 2 ? '어제' : d < 7 ? `${Math.floor(d)}일 전` : d < 30 ? `${Math.floor(d / 7)}주 전` : '예전에'; }
+
 // ---------------- 입장 화면 ----------------
 const HOURS = [['자시', 23, 1], ['축시', 1, 3], ['인시', 3, 5], ['묘시', 5, 7], ['진시', 7, 9], ['사시', 9, 11], ['오시', 11, 13], ['미시', 13, 15], ['신시', 15, 17], ['유시', 17, 19], ['술시', 19, 21], ['해시', 21, 23]];
 HOURS.forEach(([n, a, b], i) => { const o = document.createElement('option'); o.value = String(i * 2); o.textContent = `${n} (${String(a).padStart(2, '0')}~${String(b).padStart(2, '0')}시)`; $('hour').appendChild(o); });
 $('my-name').value = me.name;
+// 다시 온 손님이면 이름·생일을 채워두고 인사
+if (mem.name) { me.name = mem.name; $('my-name').value = mem.name; if (mem.look) me.look = mem.look; }
+if (mem.visits) { const k = document.querySelector('#intro .kicker'); k.textContent = `🏮 다시 오셨네요${mem.name ? ', ' + mem.name + '님' : ''} · ${mem.visits + 1}번째 방문`; }
 $('reroll').onclick = () => { me.name = randomName(); me.look = randomLook(); $('my-name').value = me.name; };
 // 생년월일: 연도는 직접 입력, 월·일은 선택
 for (let m = 1; m <= 12; m++) { const o = document.createElement('option'); o.value = m; o.textContent = m; $('b-month').appendChild(o); }
@@ -124,7 +141,9 @@ function fillDays() {
   for (let d = 1; d <= n; d++) { const o = document.createElement('option'); o.value = d; o.textContent = d; $('b-day').appendChild(o); }
   $('b-day').value = Math.min(Number(keep), n);
 }
+if (mem.birth) { $('b-year').value = mem.birth.y; $('b-month').value = mem.birth.m; }
 fillDays();
+if (mem.birth) { $('b-day').value = mem.birth.d; $('hour').value = mem.birth.hour ?? ''; }
 $('b-month').onchange = fillDays;
 $('b-year').oninput = () => { $('b-year').value = $('b-year').value.replace(/\D/g, '').slice(0, 4); if ($('b-year').value.length === 4) fillDays(); };
 function myName() { return cleanChat($('my-name').value).replace(/♡/g, '').trim().slice(0, 10) || randomName(); }
@@ -134,12 +153,14 @@ $('enter').onclick = () => {
   me.name = myName();
   const hv = $('hour').value;
   me.saju = calcSaju({ y, m, d, hour: hv === '' ? null : Number(hv) });
+  mem.birth = { y, m, d, hour: hv };
   me.el = me.saju.dominant;
   enter();
 };
 $('enter-skip').onclick = () => { me.name = myName(); enter(); };
 
 function enter() {
+  mem.name = me.name; mem.look = me.look; mem.visits = (mem.visits || 0) + 1; mem.lastVisit = Date.now(); saveMem();
   entered = true;
   $('intro').classList.add('hidden');
   ['hud', 'topright', 'hint'].forEach((id) => $(id).classList.remove('hidden'));
@@ -184,7 +205,6 @@ function enter() {
       if (near || (me.seatKey && p.stall === mySeatStall())) addChat(peer?.name || '손님', text, 'other');
     },
     onTheme: (t, by) => { if (t && t.at) applyTheme({ ...t, by }); },
-    onPlay: (p) => startPlay(p),
     onBusk: (r) => { buskReq = r; toast(`🎸 ${r.by || '누군가'}님의 신청곡이 흘러나와요`); },
     onPhoto: (p) => startPhoto(p),
     onClap: (p) => { const av = avatars.get(p.id); if (av) { const peer = net.peers.get(p.id); if (peer) peer.waveUntil = performance.now() + 1500; } if (player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 20) clap(0.6); },
@@ -266,7 +286,9 @@ function openPanel(i) {
   st.history.forEach((m) => { if (m.content.startsWith('(사장님이')) return; addMsg(m.content.replace(/^\([^)]*서빙\) /, ''), m.role === 'assistant' ? 'bot' : 'me'); });
   if (!st.greeted) {
     st.greeted = true;
-    say(st.persona.greeting || '어서 와요.');
+    const past = mem.stalls[i], rumor = !past && mem.last && mem.last.stall !== i ? mem.last : null;
+    if (past?.worries?.length || rumor) greetRegular(i, past, rumor);
+    else say(st.persona.greeting || '어서 와요.');
     if (me.saju) {
       const s = me.saju, sm = sajuSummary(s), f = todayFortune(s);
       const box = `<div class="mini-pillars">${[s.pillars.year, s.pillars.month, s.pillars.day, s.pillars.hour].map((p) => (p ? p.h : '??')).join(' · ')}</div>`;
@@ -274,6 +296,22 @@ function openPanel(i) {
     } else addMsg('사주 없이 앉았어요. 입장 화면에서 생년월일을 넣으면 사주 상담을 받을 수 있어요.', 'sys');
   }
   renderChips();
+}
+// 단골 인사: 지난번 고민을 먼저 물어봄 (다른 포차에서 한 얘기는 '소문'으로)
+async function greetRegular(i, past, rumor) {
+  const st = stallState[i];
+  const w = past ? past.worries[past.worries.length - 1] : rumor.text;
+  const when = agoText(past ? past.at : rumor.at);
+  const fallback = past ? `어, 또 왔네! ${when} "${w.slice(0, 24)}" 얘기했잖아. 그거 어떻게 됐어?` : `어서 와. 소문 들었어, ${when} ${rumor.persona}한테 "${w.slice(0, 20)}" 얘기했다며? 좀 괜찮아졌어?`;
+  const typing = addMsg('<span class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="think-txt">단골 손님 얼굴을 알아보는 중</span></span>', 'bot typing', true);
+  const instr = past
+    ? `(지시: 손님이 다시 찾아왔다. ${when} 이 포차에서 "${past.worries.join('" / "')}" 라는 고민을 얘기했었다. 단골을 알아보듯 반갑게 맞고, 그 일이 어떻게 됐는지 먼저 물어봐줘. 2문장.)`
+    : `(지시: 처음 온 손님이지만, ${when} 옆 포차 "${rumor.persona}"에게 "${rumor.text}" 고민을 털어놨다는 소문을 들었다. 소문 들은 티를 내며 반갑게 맞고 그 뒤로 괜찮은지 물어봐줘. 2문장.)`;
+  const res = await counsel({ persona: (({ name, speech, catchphrases, backstory, sample, greeting }) => ({ name, speech, catchphrases, backstory, sample, greeting }))(st.persona), saju: me.saju ? sajuDetail(me.saju) : {}, fortune: {}, history: [], message: instr }, null).catch(() => ({ text: '' }));
+  typing.remove();
+  const text = res.text && !res.offline ? res.text : styleize(fallback, st.persona);
+  if (curStall === i) say(text); else st.history.push({ role: 'assistant', content: text });
+  if (st.counselor) bubbleOn(st.counselor, text.split(/(?<=[.!?…])\s/)[0].slice(0, 40), 5000);
 }
 function say(text) { const st = stallState[curStall]; st.history.push({ role: 'assistant', content: text }); addMsg(text, 'bot'); }
 const CHIPS = ['내 사주 전체 풀이해줘', '오늘 운세 어때요?', '내년 운세 봐주세요', '진로가 고민이에요', '연애운 봐주세요', '요즘 너무 지쳐요', '사람 관계가 힘들어요'];
@@ -298,6 +336,7 @@ async function ask(text) {
   if (st.counselor) bubbleOn(st.counselor, '🤔 …', 30000);
   talking = i;
   const saju = me.saju ? { ...sajuDetail(me.saju), 운의_흐름: luckContext(me.saju, text) } : { note: '사주 정보 없음 — 사주 대신 대화로만 상담' };
+  if (mem.stalls[i]?.worries?.length) saju.지난번에_털어놓은_고민 = mem.stalls[i].worries;
   const res = await counsel({
     persona: (({ name, speech, catchphrases, backstory, sample, greeting }) => ({ name, speech, catchphrases, backstory, sample, greeting }))(st.persona), saju,
     table: me.orders.map((id) => MENU_BY_ID[id]?.name || (id === 'bungeo' ? '붕어빵' : id)).join(', ') || '아직 주문 없음',
@@ -306,6 +345,7 @@ async function ask(text) {
   let reply = res.text;
   if (!reply) reply = `${st.persona.greeting || ''} 사주를 몰라도 들어줄 수는 있어요. 오늘은 따뜻한 국물부터 한 그릇 해요.`;
   st.history.push({ role: 'user', content: text });
+  if (!/^(내 사주 전체|오늘 운세|내년 운세)/.test(text)) rememberWorry(i, text.slice(0, 60));
   typing.remove(); clearInterval(thinkTimer);
   if (st.counselor?.userData.bubble) { st.counselor.remove(st.counselor.userData.bubble); st.counselor.userData.bubble = null; }
   talking = -1;
@@ -768,72 +808,6 @@ $('btn-request').onclick = () => {
   showModal('song-modal');
 };
 
-// --- 즉석 연극
-let playBusy = false;
-$('btn-ticket').onclick = () => {
-  if (street.play) { toast('지금 야외무대에서 공연 중이에요! 공원으로 들어가 보세요'); return; }
-  showModal('play-modal'); setTimeout(() => $('play-q').focus(), 50);
-};
-$('play-form').onsubmit = async (e) => {
-  e.preventDefault();
-  if (playBusy) return; playBusy = true;
-  const topic = $('play-q').value.trim(); $('play-q').value = '';
-  $('play-modal').classList.add('hidden');
-  bubbleOn(street.barker, '작가님이 대본 쓰는 중이에요! ✍️', 6000);
-  toast('🎭 AI 작가가 대본을 쓰는 중…');
-  const script = (await makePlay(topic, theme ? theme.title : ELEMENTS[weatherEl]?.weather)) || JSON.parse(JSON.stringify(PLAY_PRESETS[Math.floor(Math.random() * PLAY_PRESETS.length)]));
-  const p = { script, startAt: Date.now() + 6000, by: me.name };
-  startPlay(p); net.play(p);
-  playBusy = false;
-};
-$('btn-goplay').onclick = () => { if (!player) return; if (player.seat) stand(); player.pos.set(STAGE.x - 1 + Math.random() * 2, 0, STAGE.z + 8.5); player.yaw = 0; player.pitch = 0.25; player.dist = 7; };
-const nearStage = () => player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 26;
-function showSub(name, text, narr = false) {
-  if (!nearStage()) return;
-  const sub = $('subtitle'); sub.innerHTML = '';
-  if (narr) { const i = document.createElement('i'); i.textContent = `(해설) ${text}`; sub.appendChild(i); }
-  else { const b = document.createElement('b'); b.textContent = `${name}  `; sub.appendChild(b); sub.appendChild(document.createTextNode(text)); }
-  sub.classList.remove('hidden');
-}
-street.theater.bubble = (t) => bubbleSprite(t);
-street.theater.onReact = (k) => { if (nearStage() && k === 'clap') clap(0.8); if (nearStage() && k === 'laugh') sfx('laugh'); };
-let watchCam = true, lastDragAt = 0;
-function startPlay(p) {
-  if (street.play) return;
-  watchCam = true;
-  street.startPlay(p.script, p.startAt, {
-    title: (sc) => { if (!nearStage()) return; const tc = $('title-card'); tc.querySelector('b').textContent = `「${sc.title}」`; tc.querySelector('span').textContent = `📍 ${sc.place || '대학로'} · 출연 ${sc.cast.map((c) => c.name).join(', ')}`; tc.classList.remove('hidden'); tc.classList.add('show'); setTimeout(() => { tc.classList.remove('show'); setTimeout(() => tc.classList.add('hidden'), 600); }, 3200); },
-    line: (actor, ln, sc) => {
-      const dur = Math.min(6.2, Math.max(2.6, 2.0 + String(ln.text).length * 0.075)) * 1000;
-      if (ln.who < 0 || !actor) { showSub('', ln.text, true); return; }
-      bubbleOn(actor, ln.text, dur);
-      showSub(sc.cast[ln.who]?.name || '', ln.text);
-    },
-    sfx: (k) => { if (nearStage()) sfx(k); },
-    curtainCall: (sc) => { if (nearStage()) { showSub('', `「${sc.title}」 — 끝. 배우들이 인사합니다!`, true); clap(); } },
-    end: () => { $('subtitle').classList.add('hidden'); if (nearStage()) toast(`👏 「${p.script.title}」 공연 끝! 박수~`); },
-  });
-  toast(`🎭 ${p.by ? p.by + '님이 연 ' : ''}즉석 연극 「${p.script.title}」 곧 시작! (마로니에 야외무대)`);
-  bubbleOn(street.barker, `「${p.script.title}」 곧 시작해요~!`, 5000);
-}
-// 관람 카메라: 공연 중 무대 근처에 있으면 객석에서 말하는 배우를 비춤 (드래그하면 해제)
-const camTmp = new THREE.Vector3(), lookTmp = new THREE.Vector3(STAGE.x, 1.8, STAGE.z - 1.5);
-function watchCamera(dt, now) {
-  const on = !!(street.play && player && !player.seat && watchCam && nearStage() && now - lastDragAt >= 4000);
-  if (player) player.group.visible = !on; // 관람 중엔 내 캐릭터는 객석에 앉은 셈
-  if (player && on) player.marker.visible = false;
-  const fov = on ? 36 : 55;
-  if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 2); camera.updateProjectionMatrix(); }
-  if (!on) return false;
-  const sp = street.theater.speakerPos() || new THREE.Vector3(STAGE.x, 1.8, STAGE.z - 1.5);
-  camTmp.set(STAGE.x + (sp.x - STAGE.x) * 0.4 + Math.sin(now / 4000) * 0.6, 2.9, STAGE.z + 6.8);
-  camera.position.lerp(camTmp, Math.min(1, dt * 1.5));
-  lookTmp.lerp(sp, Math.min(1, dt * 2.5));
-  camera.lookAt(lookTmp);
-  return true;
-}
-canvas.addEventListener('pointerdown', () => { if (street.play) lastDragAt = performance.now(); });
-
 function tickStreet(dt, now, nowSec) {
   street.update(nowSec, dt, now, player && !player.seat ? player.pos : null);
   tickTheme();
@@ -846,9 +820,7 @@ function tickStreet(dt, now, nowSec) {
     const nearStage = d < 13 && !player.seat;
     $('btn-clap').classList.toggle('hidden', !nearStage);
     $('btn-request').classList.toggle('hidden', !nearStage || !!street.play);
-    const nearBooth = !player.seat && Math.hypot(player.pos.x + 1.2, player.pos.z - 8.9) < 2.6;
-    $('btn-ticket').classList.toggle('hidden', !nearBooth);
-    $('btn-goplay').classList.toggle('hidden', !street.play || d < 20);
+    $('btn-wall').classList.toggle('hidden', player.seat || !(Math.abs(player.pos.x - WALL.x) < 3 && player.pos.z < 1.6));
     $('btn-photo').classList.toggle('hidden', !inBooth(player.pos.x, player.pos.z) || player.seat || !!(photo && !photo.done));
     // 열차 도착 알림
     if (street.rush >= 0 && street.rush !== lastRush) { lastRush = street.rush; if (Math.abs(player.pos.x - 28) < 35 && player.pos.z > -1) toast('🚇 혜화역에 열차 도착 — 사람들이 쏟아져 나와요'); }
@@ -934,6 +906,65 @@ function tickPhoto(now) {
   booth.flash.intensity *= 0.85;
 }
 
+// ---------------- 마로니에 고민 벽 ----------------
+const wall = createWall(scene, { onChange: () => { if (!$('wall-modal').classList.contains('hidden')) renderWall(); } });
+wall.onMyCheer = (r) => toast(`🍶 누군가 당신의 고민에 공감을 남겼어요: "${r.text.slice(0, 16)}…"`);
+let openNote = null;
+$('btn-wall').onclick = () => { openNote = null; renderWall(); $('wall-modal').classList.remove('hidden'); wall.reload(); };
+$('wall-q').oninput = () => { $('wall-count').textContent = `${$('wall-q').value.length}/80 · 연락처·실명은 적지 마세요`; };
+function renderWall() {
+  $('wall-note').textContent = wall.online ? '' : '(지금은 예시 고민만 보여요 — 내가 붙인 고민은 이 기기에서만 보여요)';
+  const grid = $('wall-grid'); grid.innerHTML = '';
+  wall.rows.forEach((r, i) => {
+    const d = document.createElement('div');
+    d.className = 'note' + (openNote === r ? ' open' : '');
+    d.style.background = EL_COLOR[r.el] || '#fff3bf';
+    d.style.transform = `rotate(${((i * 37) % 7 - 3) * 0.6}deg)`;
+    const tape = document.createElement('i'); tape.className = 'tape'; d.appendChild(tape);
+    const t = document.createElement('div'); t.textContent = r.text; d.appendChild(t);
+    const total = (r.cheers || 0) + (r.hugs || 0) + (r.fires || 0);
+    if (openNote !== r) {
+      const c = document.createElement('span'); c.className = 'cnt'; c.textContent = `${total ? '🍶 ' + total : ''}${r.reply ? ' 💬' : ''}`; d.appendChild(c);
+      if (wall.isMine(r.id)) { const m = document.createElement('span'); m.className = 'mine'; m.textContent = '내 고민'; d.appendChild(m); }
+      d.onclick = () => { openNote = r; renderWall(); };
+    } else {
+      if (r.reply) { const rp = document.createElement('div'); rp.className = 'reply'; rp.textContent = `🏮 ${r.reply_by || '포차 사장님'}: ${r.reply}`; d.appendChild(rp); }
+      const bar = document.createElement('div'); bar.className = 'reacts';
+      [['cheer', '🍶 나도 그래', 'cheers'], ['hug', '🫂 힘내', 'hugs'], ['fire', '🔥 할 수 있어', 'fires']].forEach(([k, label, col]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = `${label} ${r[col] || 0}`;
+        if (wall.hasReacted(r.id, k)) b.classList.add('done');
+        b.onclick = async (e) => { e.stopPropagation(); if (await wall.react(r, k)) { clink(); renderWall(); } };
+        bar.appendChild(b);
+      });
+      const rep = document.createElement('button'); rep.type = 'button'; rep.className = 'report'; rep.textContent = '신고';
+      rep.onclick = (e) => { e.stopPropagation(); if (confirm('이 고민을 신고할까요? 신고가 쌓이면 벽에서 내려가요.')) { wall.report(r); openNote = null; toast('신고했어요'); } };
+      bar.appendChild(rep); d.appendChild(bar);
+      d.onclick = () => { openNote = null; renderWall(); };
+    }
+    grid.appendChild(d);
+  });
+}
+let wallBusy = false;
+$('wall-form').onsubmit = async (e) => {
+  e.preventDefault();
+  if (wallBusy) return;
+  const raw = $('wall-q').value.trim();
+  if (raw.length < 2) { toast('고민을 조금만 더 적어주세요'); return; }
+  const text = cleanChat(raw);
+  const chk = checkWorry(text);
+  if (chk === 'crisis') { $('care-modal').classList.remove('hidden'); return; }
+  if (chk === 'pii') { toast('연락처나 아이디 같은 개인정보는 빼고 적어주세요'); return; }
+  wallBusy = true; toast('📝 포스트잇 붙이는 중…');
+  const r = await wallReply(text);
+  wallBusy = false;
+  if (r.crisis) { $('care-modal').classList.remove('hidden'); return; }
+  if (!r.ok) { toast('다른 사람을 아프게 할 수 있는 내용은 붙일 수 없어요'); return; }
+  $('wall-q').value = ''; $('wall-count').textContent = '0/80 · 연락처·실명은 적지 마세요';
+  const row = await wall.add(text, me.saju?.dominant || 'earth', r.reply, r.by);
+  openNote = row; renderWall();
+  toast(`📝 붙였어요! ${r.by}님이 답을 달았어요`);
+};
+
 // ---------------- 루프 ----------------
 const clock = new THREE.Clock();
 let moveT = 0;
@@ -986,7 +1017,6 @@ function frame() {
   viewOff.x += (ox - viewOff.x) * Math.min(1, dt * 4); viewOff.y += (oy - viewOff.y) * Math.min(1, dt * 4);
   if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(W, H, viewOff.x, viewOff.y, W, H); else camera.clearViewOffset();
   tickStreet(dt, now, nowSec);
-  watchCamera(dt, now);
   tickPhoto(now);
   { const f = player ? player.pos : camera.position; world.key.target.position.set(f.x, 0, f.z); world.key.position.set(f.x + 6, 14, f.z + 10); }
   updateWeather(world.weather, world, theme ? themeWeather(theme) : weatherEl, dt, now);
@@ -998,4 +1028,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // 테스트·시연용 핸들
-window.__sp = { startPhoto, booth, get photo() { return photo; }, street, requestTheme, startPlay, get theme() { return theme; }, kitchenOf, get lastAll() { return lastAll; }, me, cheersWith, openCheersPick, stallState, order, sendChat, buyBungeo, showTab, get nearBungeo() { return nearBungeo; }, get player() { return player; }, stallState, world, sit, stand, ask, restyle, showCard, get nearSeat() { return nearSeat; }, avatars, relation };
+window.__sp = { wall, renderWall, startPhoto, booth, get photo() { return photo; }, street, requestTheme, get theme() { return theme; }, kitchenOf, get lastAll() { return lastAll; }, me, cheersWith, openCheersPick, stallState, order, sendChat, buyBungeo, showTab, get nearBungeo() { return nearBungeo; }, get player() { return player; }, stallState, world, sit, stand, ask, restyle, showCard, get nearSeat() { return nearSeat; }, avatars, relation };

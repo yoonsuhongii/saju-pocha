@@ -161,39 +161,6 @@ export function cleanChat(t) {
   return s;
 }
 
-// ---------------- 즉석 연극 ----------------
-export async function makePlay(topic, mood) {
-  try {
-    const j = await post('/api/play', { topic, mood }, 40000);
-    if (!j?.lines?.length || !j?.cast?.length) throw new Error('bad');
-    const n = Math.min(3, j.cast.length);
-    const hex = (v, d) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : d);
-    const ACTS = ['talk', 'wave', 'cheer', 'jump', 'sit', 'bow', 'cry', 'laugh', 'angry', 'surprise', 'think', 'dance', 'point', 'hug', 'fall', 'walk'];
-    const PROPS = ['bench', 'table', 'lamp', 'tree', 'busstop', 'desk', 'pocha', 'door', 'moon', 'stars', 'flowers'];
-    const HAIR = ['short', 'bun', 'long', 'ponytail', 'perm', 'spiky', 'bald'];
-    const ACC = ['none', 'glasses', 'hat', 'beanie', 'catears', 'flower', 'towel', 'headscarf', 'crown'];
-    const SKINS = ['#ffe0c7', '#f2c9a0', '#e8b48a', '#d49b6e'];
-    return {
-      title: cleanChat(String(j.title || '즉석 연극')).slice(0, 14), place: cleanChat(String(j.place || '대학로')).slice(0, 16),
-      bg: [hex(j.bg?.[0], '#1b1440'), hex(j.bg?.[1], '#d9822b')],
-      props: (Array.isArray(j.props) ? j.props : []).filter((p) => PROPS.includes(p)).slice(0, 4),
-      cast: j.cast.slice(0, n).map((c, i) => ({
-        name: cleanChat(String(c.name || '배우')).slice(0, 10),
-        look: { skin: SKINS[i % SKINS.length], hair: ['#2b1d14', '#5a3a22', '#1a1a1a'][i % 3], hairStyle: HAIR.includes(c.hair) ? c.hair : 'short', outfit: hex(c.outfit, ['#ff8fab', '#74c0fc', '#ffd43b'][i]), apron: null, accessory: ACC.includes(c.accessory) ? c.accessory : 'none', accessoryColor: ['#ffd43b', '#ffffff', '#ff6b6b'][i], height: 1, eyes: i % 2 ? 'line' : 'dot' },
-      })),
-      lines: j.lines.slice(0, 14).map((l) => ({
-        who: Number(l.who) < 0 ? -1 : Math.max(0, Math.min(n - 1, Number(l.who) || 0)),
-        text: cleanChat(String(l.text || '…')).slice(0, 60),
-        act: ACTS.includes(l.act) ? l.act : 'talk',
-        to: ['left', 'center', 'right', 'front', 'back', 'frontleft', 'frontright'].includes(l.to) ? l.to : undefined,
-        emote: typeof l.emote === 'string' ? [...l.emote][0] : undefined,
-        sfx: ['rimshot', 'chime', 'whoosh', 'boing', 'sad', 'drumroll'].includes(l.sfx) ? l.sfx : undefined,
-        react: ['laugh', 'gasp', 'aww', 'clap'].includes(l.react) ? l.react : 'none',
-      })),
-    };
-  } catch { return null; }
-}
-
 // ---------------- 거리 테마 ----------------
 const THEME_PRESETS = [
   { k: ['캠퍼스', '대학', '학교', '개강', '축제 기간', '동아리'], t: { title: '2030 캠퍼스의 밤', weather: 'clear', sky: ['#060a1c', '#24305a'], fog: '#141a30', bulb: '#fff3c4', decor: 'none', banner: '대학로 캠퍼스 나이트', bannerBg: '#7a1f2b', outfits: ['#7a1f2b', '#1c4e9c', '#f1f3f5', '#2b8a3e', '#495057'], accessory: 'none', mood: 'festive', busker: '과제 끝난 사람 박수!', set: 'campus', gate: '2030 대학교 정문', backdrop: '중앙도서관 · 24시 열람실', booths: ['동아리 박람회', '학생회 부스', '과잠 판매', '중고책 장터'], signs: ['북카페', '복사·제본', '학식당', '과방', '문구점', '스터디카페', '자취방 부동산', '분식집', '노래연습장', '편의점', '복학생 PC방', '인쇄소', '빨래방'], signColors: ['#ffd43b', '#4dabf7', '#ff8787'], buildingColor: '#2a2a3a', ground: '#5f6b5a', leaves: ['#2f9e44', '#40c057', '#5c940d'] } },
@@ -237,4 +204,24 @@ export async function makeTheme(prompt) {
       leaves: (Array.isArray(t.leaves) ? t.leaves : []).map((c) => hex(c, null)).filter(Boolean).slice(0, 5),
     };
   } catch { return offlineTheme(prompt); }
+}
+
+// ---------------- 고민 벽 답글 ----------------
+const WALL_REPLIES = [
+  ['욕쟁이 할매', '워메, 그 맘 내가 다 알어. 오늘은 따순 국물 먹고 일찍 자잉.'],
+  ['부산 김사장', '마, 니만 그런 거 아이다. 천천히 해도 된다.'],
+  ['산사 스님', '허허, 고민이 있다는 건 잘 살고 싶다는 뜻이지요.'],
+  ['반짝이 사장', '여기 적은 것만으로도 완전 용기 낸 거예요!'],
+  ['김팀장', '야 그거 나도 겪었어. 하나씩만 해, 하나씩.'],
+  ['달빛 보살', '지금은 흐려도… 곧 맑아지는 기운이 보여요.'],
+];
+export async function wallReply(text) {
+  try {
+    const r = await post('/api/wall-reply', { text }, 20000);
+    if (typeof r?.ok !== 'boolean') throw new Error('bad');
+    return { ok: r.ok, crisis: r.crisis, reply: cleanChat(r.reply || ''), by: r.by };
+  } catch {
+    const p = WALL_REPLIES[Math.floor(Math.random() * WALL_REPLIES.length)];
+    return { ok: true, crisis: false, reply: p[1], by: p[0] };
+  }
 }
