@@ -1,5 +1,7 @@
 // 거리 소리: 빗소리(필터된 잡음) + 웅성임 + 건배 '짠' — 파일 없이 WebAudio 합성
-let ac = null, master = null, rainG = null, crowdG = null, on = true;
+let ac = null, master = null, rainG = null, crowdG = null, sfx = null, ambBus = null, on = true;
+export const VOL = { amb: 0.6, music: 0.6, sfx: 0.7 };
+let rainLevel = 0;
 
 function noiseBuf(sec, brown) {
   const len = ac.sampleRate * sec, b = ac.createBuffer(1, len, ac.sampleRate), d = b.getChannelData(0);
@@ -12,17 +14,21 @@ export function startAudio() {
   try {
     ac = new (window.AudioContext || window.webkitAudioContext)();
     master = ac.createGain(); master.gain.value = 0.8; master.connect(ac.destination);
+    sfx = ac.createGain(); sfx.gain.value = VOL.sfx; sfx.connect(master);
+    ambBus = ac.createGain(); ambBus.gain.value = VOL.amb; ambBus.connect(master);
     const rain = ac.createBufferSource(); rain.buffer = noiseBuf(3, false); rain.loop = true;
     const hp = ac.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = 2500; hp.Q.value = 0.4;
     rainG = ac.createGain(); rainG.gain.value = 0;
-    rain.connect(hp).connect(rainG).connect(master); rain.start();
+    rain.connect(hp).connect(rainG).connect(ambBus); rain.start();
     const crowd = ac.createBufferSource(); crowd.buffer = noiseBuf(4, true); crowd.loop = true;
     const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600;
     crowdG = ac.createGain(); crowdG.gain.value = 0.12;
-    crowd.connect(lp).connect(crowdG).connect(master); crowd.start();
+    crowd.connect(lp).connect(crowdG).connect(ambBus); crowd.start();
   } catch { ac = null; }
 }
-export function setRain(level) { if (rainG) rainG.gain.setTargetAtTime(on ? level * 0.12 : 0, ac.currentTime, 1); }
+export function setRain(level) { rainLevel = level; if (rainG) rainG.gain.setTargetAtTime(on ? level * 0.12 : 0, ac.currentTime, 1); }
+export function setVolume(kind, v) { VOL[kind] = v; if (!ac) return; if (kind === 'amb') ambBus.gain.setTargetAtTime(v, ac.currentTime, 0.1); if (kind === 'sfx') sfx.gain.setTargetAtTime(v, ac.currentTime, 0.1); }
+export function isOn() { return on; }
 export function clink() {
   if (!ac || !on) return;
   const t = ac.currentTime;
@@ -30,7 +36,7 @@ export function clink() {
     const o = ac.createOscillator(), g = ac.createGain();
     o.type = 'sine'; o.frequency.value = f;
     g.gain.setValueAtTime(0.0001, t + i * 0.012); g.gain.exponentialRampToValueAtTime(0.12, t + i * 0.012 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-    o.connect(g).connect(master); o.start(t); o.stop(t + 1);
+    o.connect(g).connect(sfx); o.start(t); o.stop(t + 1);
   });
 }
 export function toggleSound() { on = !on; if (master) master.gain.setTargetAtTime(on ? 0.8 : 0, ac.currentTime, 0.1); return on; }
@@ -45,12 +51,12 @@ export function clap(vol = 1) {
     const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1200 + Math.random() * 800;
     const g = ac.createGain(); const t = t0 + i * 0.11 + Math.random() * 0.03;
     g.gain.setValueAtTime(0.25 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-    src.connect(bp).connect(g).connect(master); src.start(t);
+    src.connect(bp).connect(g).connect(sfx); src.start(t);
   }
 }
 // 경적
 export function honk() {
   if (!ac || !on) return;
   const t = ac.currentTime;
-  [440, 554].forEach((f) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = f; g.gain.setValueAtTime(0.04, t); g.gain.setValueAtTime(0.04, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35); o.connect(g).connect(master); o.start(t); o.stop(t + 0.4); });
+  [440, 554].forEach((f) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = f; g.gain.setValueAtTime(0.04, t); g.gain.setValueAtTime(0.04, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35); o.connect(g).connect(sfx); o.start(t); o.stop(t + 0.4); });
 }

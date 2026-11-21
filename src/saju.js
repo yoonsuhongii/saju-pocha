@@ -193,3 +193,34 @@ export function sajuDetail(s, date = new Date()) {
     올해: `${y}년 ${yp.ko}년 — ${GOD_PLAIN[tenGod(ds, yp.s)]}과 ${GOD_PLAIN[tenGod(ds, BRANCH_MAIN[yp.b])]}이 들어오는 해`,
   };
 }
+
+// ---------------- 운의 흐름: 해(연운)·달(월운) ----------------
+function luckLine(s, p, label) {
+  const ds = s.pillars.day.s;
+  const els = [STEM_EL[p.s], BRANCH_EL[p.b]];
+  const g1 = GOD_PLAIN[tenGod(ds, p.s)], g2 = GOD_PLAIN[tenGod(ds, BRANCH_MAIN[p.b])];
+  const fill = s.lacking.length && els.some((e) => s.lacking.includes(e)) ? ` · 없던 ${EL_PLAIN[els.find((e) => s.lacking.includes(e))]} 기운이 채워짐` : els.includes(s.weak) ? ` · 약한 ${EL_PLAIN[s.weak]} 기운이 보충됨` : '';
+  const heavy = els.filter((e) => e === s.dominant).length === 2 ? ` · 이미 많은 ${EL_PLAIN[s.dominant]} 기운이 더 세짐(과하면 무리 주의)` : '';
+  return `${label} ${p.ko}(${EL_PLAIN[els[0]]}·${EL_PLAIN[els[1]]}) — ${g1}과 ${g2}${fill}${heavy}`;
+}
+/** 그 해의 운 (입춘 이후 기준) */
+export function yearLuck(s, y) {
+  const p = calcSaju({ y, m: 6, d: 15, hour: null }).pillars.year;
+  return luckLine(s, p, `${y}년`);
+}
+/** 그 달의 운 (절기 기준 그 달의 중순) */
+export function monthLuck(s, y, m) {
+  const p = calcSaju({ y, m, d: 15, hour: null }).pillars.month;
+  return luckLine(s, p, `${y}년 ${m}월`);
+}
+/** 상담용 운의 흐름: 올해~앞으로 몇 해 + 앞으로 12달 + 질문에 나온 연도 */
+export function luckContext(s, message = '', date = new Date()) {
+  const y0 = date.getFullYear();
+  const years = [];
+  for (let y = y0 - 1; y <= y0 + 5; y++) years.push(yearLuck(s, y));
+  const asked = [...String(message).matchAll(/(19[3-9]\d|20\d\d|21\d\d)\s*년?/g)].map((m) => Number(m[1])).filter((y) => y < y0 - 1 || y > y0 + 5);
+  [...new Set(asked)].slice(0, 3).forEach((y) => years.push(yearLuck(s, y)));
+  const months = [];
+  for (let k = 0; k < 12; k++) { const d = new Date(y0, date.getMonth() + k, 1); months.push(monthLuck(s, d.getFullYear(), d.getMonth() + 1)); }
+  return { 해마다: years, 앞으로_12달: months };
+}

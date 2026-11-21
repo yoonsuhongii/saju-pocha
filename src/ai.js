@@ -1,5 +1,5 @@
 // GPT 호출 (Vercel /api) + 오프라인 대체 규칙 (키가 없거나 미리보기 환경에서도 동작)
-import { ELEMENTS, snackFor } from './saju.js';
+import { ELEMENTS, snackFor, yearLuck } from './saju.js';
 
 let calls = 0;
 const MAX_CALLS = 60;
@@ -100,7 +100,13 @@ export function offlineCounsel({ persona, saju, fortune, message }) {
   }
   const topic = (TOPICS.find((x) => x.k.some((k) => m.includes(k))) || { t: 'etc' }).t;
   let body;
-  if (topic === 'today') body = `오늘은 ${fortune.rel}의 날이야. ${fortune.tone}`;
+  const ym = m.match(/(19[3-9]\d|20\d\d|21\d\d)\s*년/);
+  const yr = /내년/.test(m) ? new Date().getFullYear() + 1 : /올해|금년/.test(m) ? new Date().getFullYear() : /후년/.test(m) ? new Date().getFullYear() + 2 : ym ? Number(ym[1]) : null;
+  if (yr && saju?.pillars) {
+    const line = yearLuck(saju, yr).replace(/^\d+년 /, '');
+    return styleize(`${yr}년은 ${line.split(' — ')[0]}의 해야. 그 해엔 ${line.split(' — ')[1]}이 들어와. 흐름을 타되 너무 몰아붙이진 마.`, persona);
+  }
+  if (topic === 'today') body = `오늘은 ${fortune.relPlain || fortune.나와의관계 || '평범한 날'}이야. ${fortune.tone || fortune.풀이 || ''}`;
   else body = ADVICE[topic](saju);
   const snack = snackFor(saju.weak);
   const tail = topic === 'tired' ? '' : ` 안주는 ${snack.name} 어때, ${snack.why}.`;
@@ -171,17 +177,23 @@ export async function makePlay(topic, mood) {
 
 // ---------------- 거리 테마 ----------------
 const THEME_PRESETS = [
+  { k: ['캠퍼스', '대학', '학교', '개강', '축제 기간', '동아리'], t: { title: '2030 캠퍼스의 밤', weather: 'clear', sky: ['#060a1c', '#24305a'], fog: '#141a30', bulb: '#fff3c4', decor: 'none', banner: '대학로 캠퍼스 나이트', bannerBg: '#7a1f2b', outfits: ['#7a1f2b', '#1c4e9c', '#f1f3f5', '#2b8a3e', '#495057'], accessory: 'none', mood: 'festive', busker: '과제 끝난 사람 박수!', set: 'campus', gate: '2030 대학교 정문', backdrop: '중앙도서관 · 24시 열람실', booths: ['동아리 박람회', '학생회 부스', '과잠 판매', '중고책 장터'], signs: ['북카페', '복사·제본', '학식당', '과방', '문구점', '스터디카페', '자취방 부동산', '분식집', '노래연습장', '편의점', '복학생 PC방', '인쇄소', '빨래방'], signColors: ['#ffd43b', '#4dabf7', '#ff8787'], buildingColor: '#2a2a3a', ground: '#5f6b5a', leaves: ['#2f9e44', '#40c057', '#5c940d'] } },
+  { k: ['한옥', '전통', '조선', '궁'], t: { title: '한옥 마당의 밤', weather: 'clear', sky: ['#06060f', '#2a2238'], fog: '#18141f', bulb: '#ffcf8a', decor: 'lanterns', banner: '대학로 전통 야행', bannerBg: '#2b2b30', outfits: ['#f8f0e3', '#b02a2a', '#2b4a8a', '#e8c070'], accessory: 'hat', mood: 'warm', busker: '국악 한 곡 갑니다', set: 'hanok', gate: '혜화 한옥문', backdrop: '대학로 한옥 마당', booths: ['전통차', '한지 공방', '탈 만들기', '떡 체험'], signs: ['찻집', '한지방', '전통주', '서예원', '떡집', '목공방', '도자기', '한복대여', '국악당', '약과집', '부채방', '책방', '주막'], signColors: ['#ffe8b0', '#ffb3a0'], buildingColor: '#3a2e28', ground: '#8a7a64', leaves: ['#d9822b', '#b5651d', '#e8a33d'] } },
+  { k: ['사이버', '미래', '네온', 'sf', 'SF', '로봇'], t: { title: '네오 혜화 2077', weather: 'rain', sky: ['#05001a', '#2a0a4a'], fog: '#1a0a2e', bulb: '#ff3df0', decor: 'none', banner: 'NEO HYEHWA', bannerBg: '#3b1a6b', outfits: ['#00e5ff', '#ff3df0', '#14142a', '#7cff6b'], accessory: 'glasses', mood: 'festive', busker: '전자기타 모드 ON', set: 'cyber', gate: 'NEO HYEHWA', backdrop: 'NEO HYEHWA 2077', booths: ['로봇 수리', '홀로그램 사주', '전뇌 라면', '드론 배달'], signs: ['사이버 사주', 'AI 노래방', '로봇카페', '홀로PC방', '뉴럴 편의점', '드론택배', '메타 극장', '전뇌분식', 'VR방', '칩 수리', '네온바', '클론 미용실', '우주정거장'], signColors: ['#00e5ff', '#ff3df0', '#7cff6b'], buildingColor: '#14142a', ground: '#1a1a2e', leaves: ['#7048e8', '#00e5ff', '#ff3df0'] } },
+  { k: ['시장', '야시장', '장터'], t: { title: '대학로 야시장', weather: 'clear', sky: ['#0a0612', '#3a2418'], fog: '#201410', bulb: '#ffb86b', decor: 'lanterns', banner: '대학로 야시장 오픈', bannerBg: '#d9480f', outfits: ['#e8590c', '#f59f00', '#495057', '#f1f3f5'], accessory: 'headscarf', mood: 'festive', busker: '시장 노래 갑니다!', set: 'market', gate: '대학로 야시장', backdrop: '대학로 야시장', booths: ['꼬치구이', '빈대떡', '수제 액세서리', '중고 레코드'], signs: ['빈대떡', '순대국', '꽈배기', '어묵집', '호떡', '수산', '청과', '반찬가게', '방앗간', '닭강정', '분식', '잡화', '포목점'], signColors: ['#ffd43b', '#ff922b'], buildingColor: '#3a2a22', ground: '#7a5a48', leaves: [] } },
+  { k: ['바다', '해변', '여름 바다', '비치'], t: { title: '혜화 비치', weather: 'clear', sky: ['#020a1c', '#1a4a6a'], fog: '#0a1a2a', bulb: '#a5f3ff', decor: 'balloons', banner: '혜화역에 바다가 왔다', bannerBg: '#1c7ed6', outfits: ['#ffd43b', '#4dabf7', '#ff8787', '#ffffff'], accessory: 'hat', mood: 'festive', busker: '파도 소리 들리죠?', set: 'beach', gate: '혜화 비치', backdrop: '혜화 비치', booths: ['튜브 대여', '수박 주스', '조개구이', '선크림'], signs: ['횟집', '서핑샵', '빙수', '조개구이', '비치펍', '튜브대여', '해물라면', '수영복', '아이스크림', '선베드', '물회', '편의점', '등대카페'], signColors: ['#66d9e8', '#ffd43b'], buildingColor: '#e8e0c8', ground: '#d8c08a', leaves: ['#2b8a3e', '#40c057'] } },
+  { k: ['숲', '캠핑', '산'], t: { title: '마로니에 숲 캠핑', weather: 'embers', sky: ['#020a06', '#12301e'], fog: '#0a1a10', bulb: '#ffe066', decor: 'none', banner: '도심 속 숲 캠핑', bannerBg: '#2b5a2a', outfits: ['#2b8a3e', '#8a5a35', '#495057', '#e8590c'], accessory: 'beanie', mood: 'warm', busker: '모닥불 노래!', set: 'forest', gate: '마로니에 숲길', backdrop: '', booths: ['마시멜로', '랜턴 대여', '텐트', '숲 해설'], signs: ['캠핑장', '장작', '산장', '등산용품', '모닥불', '버섯집', '산채비빔밥', '숲카페', '목공소', '약초방', '야영장', '오두막', '숲속 편의점'], signColors: ['#d8f5a2', '#ffd43b'], buildingColor: '#2a2018', ground: '#3a4a2a', leaves: ['#2b6a3a', '#1b4d2b', '#40c057'] } },
   { k: ['눈', '겨울', '첫눈'], t: { title: '첫눈 오는 대학로', weather: 'snow', sky: '#0a1024,#3a4a6a'.split(','), fog: '#1a2236', bulb: '#dff1ff', decor: 'snowmen', banner: '첫눈 오는 날 마로니에에서', bannerBg: '#1c7ed6', outfits: ['#f8f9fa', '#ff6b6b', '#4dabf7', '#ffd43b', '#868e96'], accessory: 'beanie', mood: 'snow', busker: '첫눈엔 이 노래죠' } },
   { k: ['벚꽃', '봄'], t: { title: '봄밤 벚꽃 축제', weather: 'petals', sky: '#140a1e,#4a2a4a'.split(','), fog: '#2a1a2a', bulb: '#ffc2d6', decor: 'flowers', banner: '대학로 봄밤 벚꽃 축제', bannerBg: '#e64980', outfits: ['#ffdeeb', '#fcc2d7', '#ffffff', '#d0ebff', '#fff3bf'], accessory: 'flower', mood: 'warm', busker: '봄노래 갑니다' } },
   { k: ['할로윈', '호박', '귀신'], t: { title: '대학로 할로윈', weather: 'fog', sky: '#0a0514,#3a1a3a'.split(','), fog: '#24122a', bulb: '#ff922b', decor: 'pumpkins', banner: '해피 할로윈 대학로', bannerBg: '#5f3dc4', outfits: ['#212529', '#7048e8', '#ff922b', '#2b8a3e', '#c92a2a'], accessory: 'hat', mood: 'festive', busker: '으스스한 거 한 곡!' } },
   { k: ['크리스마스', '성탄', '산타'], t: { title: '크리스마스 이브', weather: 'snow', sky: '#050a18,#2a2a4a'.split(','), fog: '#1a1a2e', bulb: '#ffe066', decor: 'xmas', banner: '메리 크리스마스 대학로', bannerBg: '#c92a2a', outfits: ['#c92a2a', '#2b8a3e', '#ffffff', '#ffd43b'], accessory: 'beanie', mood: 'snow', busker: '캐럴 느낌으로!' } },
-  { k: ['축제', '여름', '불꽃', '신나'], t: { title: '한여름 밤 축제', weather: 'embers', sky: '#0a0518,#4a1a2a'.split(','), fog: '#2a1414', bulb: '#ff8787', decor: 'lanterns', banner: '대학로 한여름 밤 축제', bannerBg: '#f08c00', outfits: ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#f783ac'], accessory: 'none', mood: 'festive', busker: '다 같이 박수!' } },
+  { k: ['축제', '여름', '불꽃', '신나'], t: { title: '한여름 밤 축제', weather: 'embers', sky: '#0a0518,#4a1a2a'.split(','), fog: '#2a1414', bulb: '#ff8787', decor: 'lanterns', banner: '대학로 한여름 밤 축제', bannerBg: '#f08c00', outfits: ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#f783ac'], accessory: 'none', mood: 'festive', busker: '다 같이 박수!', set: 'festival', gate: '한여름 밤 축제', booths: ['솜사탕', '사격 게임', '페이스 페인팅', '물풍선'] } },
   { k: ['비', '재즈', '감성'], t: { title: '비 오는 재즈 밤', weather: 'rain', sky: '#02040c,#16203a'.split(','), fog: '#0a1020', bulb: '#ffd8a8', decor: 'none', banner: '비 오는 날엔 대학로 재즈', bannerBg: '#343a40', outfits: ['#495057', '#343a40', '#1864ab', '#862e9c'], accessory: 'hat', mood: 'sad', busker: '비 오는 날 노래' } },
 ];
 export function offlineTheme(prompt) {
   const s = String(prompt);
   const hit = THEME_PRESETS.find((x) => x.k.some((k) => s.includes(k)));
-  const t = hit ? hit.t : { ...THEME_PRESETS[4].t, title: s.slice(0, 12) || '거리 축제', banner: s.slice(0, 16) || '대학로 거리 축제', decor: 'balloons' };
+  const t = hit ? hit.t : { ...THEME_PRESETS.find((p) => p.k.includes('축제')).t, title: s.slice(0, 12) || '거리 축제', banner: s.slice(0, 16) || '대학로 거리 축제', decor: 'balloons', set: 'festival', gate: s.slice(0, 12) || '거리 축제', booths: [s.slice(0, 10) || '축제 부스'] };
   return JSON.parse(JSON.stringify(t));
 }
 export async function makeTheme(prompt) {
@@ -197,6 +209,13 @@ export async function makeTheme(prompt) {
       outfits: (Array.isArray(t.outfits) ? t.outfits : []).map((c) => hex(c, null)).filter(Boolean).slice(0, 6),
       accessory: ['none', 'beanie', 'hat', 'catears', 'flower', 'crown', 'headscarf', 'glasses'].includes(t.accessory) ? t.accessory : 'none',
       mood: ['warm', 'sad', 'festive', 'snow'].includes(t.mood) ? t.mood : 'warm', busker: cleanChat(String(t.busker || '')).slice(0, 24),
+      set: ['none', 'campus', 'hanok', 'cyber', 'market', 'beach', 'forest', 'festival'].includes(t.set) ? t.set : 'festival',
+      gate: cleanChat(String(t.gate || t.title)).slice(0, 14), backdrop: cleanChat(String(t.backdrop || '')).slice(0, 18),
+      booths: (Array.isArray(t.booths) ? t.booths : []).map((x) => cleanChat(String(x)).slice(0, 12)).filter(Boolean).slice(0, 4),
+      signs: (Array.isArray(t.signs) ? t.signs : []).map((x) => cleanChat(String(x)).slice(0, 8)).filter(Boolean).slice(0, 13),
+      signColors: (Array.isArray(t.signColors) ? t.signColors : []).map((c) => hex(c, null)).filter(Boolean).slice(0, 5),
+      buildingColor: hex(t.buildingColor, null), ground: hex(t.ground, null),
+      leaves: (Array.isArray(t.leaves) ? t.leaves : []).map((c) => hex(c, null)).filter(Boolean).slice(0, 5),
     };
   } catch { return offlineTheme(prompt); }
 }

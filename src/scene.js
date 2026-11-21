@@ -12,9 +12,13 @@ export const WALK = { minX: -58, maxX: 58, minZ: -0.55, maxZ: 11 };
 export function walkable(x, z) {
   if (x < WALK.minX || x > WALK.maxX || z > WALK.maxZ || z < -38) return false;
   if (z >= WALK.minZ) return true;
-  if (z >= -6.9) return Math.abs(x) < 3;
+  if (z >= -7.5) return Math.abs(x) < 2.9; // 포차 사이 길 (양옆은 포차·화단)
+  if (z < STAGE.z + 0.5 && Math.hypot(x - STAGE.x, z - STAGE.z) < 6.3) return false; // 무대 위
   return true;
 }
+// 부딪히는 물체(원형 근사): 가로등·가로수·공원 나무·벤치·표석 등
+export const OBSTACLES = [];
+const ob = (x, z, r) => OBSTACLES.push({ x, z, r });
 export const STAGE = { x: 0, z: -19 };
 export const DEFAULT_STALL_NAMES = ['두시포차', '이모네', '원조 어묵', '달빛 포차', '오행집', '골목 끝 포차', '비오는날', '첫차까지'];
 export const TARP_COLORS = ['#ff7a1a', '#ff5d3a', '#2f7bff', '#ff7a1a', '#e8590c', '#ff7a1a', '#1c7ed6', '#ff922b'];
@@ -55,6 +59,14 @@ export function buildScene(scene, { high = true } = {}) {
 
   const hemi = new THREE.HemisphereLight(0x8a96d6, 0x3a2a30, 1.25); scene.add(hemi);
   const fill = new THREE.DirectionalLight(0xffc48a, 0.9); fill.position.set(8, 10, 22); scene.add(fill);
+  // 그림자를 만드는 따뜻한 키 라이트 (포차 불빛 방향, 플레이어를 따라다님)
+  const key = new THREE.DirectionalLight(0xffd2a0, high ? 1.1 : 0.6);
+  key.position.set(6, 14, 10); scene.add(key); scene.add(key.target);
+  if (high) {
+    key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+    Object.assign(key.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 50 });
+    key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03; key.shadow.radius = 4;
+  }
   const moonLight = new THREE.DirectionalLight(0xbfd0ff, 0.5);
   moonLight.position.set(-30, 50, -40); scene.add(moonLight);
 
@@ -91,7 +103,7 @@ export function buildScene(scene, { high = true } = {}) {
   walkway.rotation.x = -Math.PI / 2; walkway.position.set(0, 0.02, -3); walkway.receiveShadow = true; scene.add(walkway);
   // 건너편 인도
   const sw2 = new THREE.Mesh(new THREE.PlaneGeometry(160, 3), std(0xffffff, { map: tile, roughness: 0.6 }));
-  sw2.rotation.x = -Math.PI / 2; sw2.position.set(0, 0.06, 10.5); scene.add(sw2);
+  sw2.rotation.x = -Math.PI / 2; sw2.position.set(0, 0.06, 10.5); sw2.receiveShadow = true; scene.add(sw2);
   const curb = new THREE.Mesh(new THREE.BoxGeometry(160, 0.15, 0.25), std(0x9c968e)); curb.position.set(0, 0.07, 9); scene.add(curb);
 
   const m4 = new THREE.Matrix4();
@@ -110,18 +122,18 @@ export function buildScene(scene, { high = true } = {}) {
   });
   brickFloor.wrapS = brickFloor.wrapT = THREE.RepeatWrapping; brickFloor.repeat.set(40, 14);
   const park = new THREE.Mesh(new THREE.PlaneGeometry(200, 70), std(0xffffff, { map: brickFloor, roughness: 0.85 }));
-  park.rotation.x = -Math.PI / 2; park.position.set(0, 0.01, -41); scene.add(park);
+  park.rotation.x = -Math.PI / 2; park.position.set(0, 0.01, -41); park.receiveShadow = true; scene.add(park);
   // 공원 경계: 낮은 화강석 턱 + 회양목 화단
   [-1, 1].forEach((sd) => { const ledge = new THREE.Mesh(new THREE.BoxGeometry(77, 0.4, 0.5), std(0x8d8a86, { roughness: 0.9 })); ledge.position.set(sd * 41.5, 0.2, -6.3); scene.add(ledge); });
   for (let x = -76; x <= 76; x += 8) { if (Math.abs(x) <= 4) continue; const hedge = new THREE.Mesh(new THREE.BoxGeometry(6, 0.7, 0.9), std(0x2f5a2a, { flatShading: true })); hedge.position.set(x, 0.55, -6.9); scene.add(hedge); }
   // 공원 표석
-  const stone = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.4, 0.8), std(0x9a958c, { roughness: 0.95 })); stone.position.set(-6, 0.7, -8.5); scene.add(stone);
+  const stone = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.4, 0.8), std(0x9a958c, { roughness: 0.95 })); stone.position.set(-6, 0.7, -8.5); scene.add(stone); [-1.2, 0, 1.2].forEach((dx) => ob(-6 + dx, -8.5, 0.55));
   const stoneTxt = new THREE.Mesh(new THREE.PlaneGeometry(3.1, 0.9), new THREE.MeshBasicMaterial({ map: canvasTex(512, 150, (g) => { g.clearRect(0, 0, 512, 150); g.font = `900 78px ${FONT}`; g.fillStyle = '#2b2622'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('마로니에공원', 256, 80); }), transparent: true }));
   stoneTxt.position.set(-6, 0.75, -8.09); scene.add(stoneTxt);
 
   // 마로니에 나무 (늦가을: 노랑·주황 잎)
   const trunkMat = std(0x4a3426, { roughness: 1, flatShading: true });
-  const leafMats = [0xe8a33d, 0xd9822b, 0xf2c14e, 0xb5651d, 0x8a9a3a].map((c) => std(c, { flatShading: true, roughness: 0.9, emissive: c, emissiveIntensity: 0.08 }));
+  const leafMats = [0xe8a33d, 0xd9822b, 0xf2c14e, 0xb5651d, 0x8a9a3a].map((c) => std(c, { roughness: 0.95, emissive: c, emissiveIntensity: 0.06 }));
   const trees = [];
   const treeSpots = [];
   for (let i = 0; i < 26; i++) treeSpots.push([-70 + i * 5.6 + Math.sin(i * 7) * 1.8, -10.5 - (i % 3) * 7 - Math.abs(Math.sin(i * 3)) * 3]);
@@ -133,10 +145,10 @@ export function buildScene(scene, { high = true } = {}) {
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.38, h, 7), trunkMat); trunk.position.y = h / 2; t.add(trunk);
     for (let k = 0; k < 6; k++) {
       const r = 1.6 + ((i + k) % 3) * 0.5;
-      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), leafMats[(i + k) % leafMats.length]);
+      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r, high ? 2 : 1), leafMats[(i + k) % leafMats.length]); blob.castShadow = high;
       blob.position.set(Math.cos(k * 1.3 + i) * 1.6, h + Math.sin(k * 2.1) * 0.9 + 0.6, Math.sin(k * 1.3 + i) * 1.6); t.add(blob);
     }
-    t.position.set(x, 0, z); t.rotation.y = i; scene.add(t); trees.push(t);
+    t.position.set(x, 0, z); t.rotation.y = i; scene.add(t); trees.push(t); ob(x, z, 0.45);
   });
   // 바닥 낙엽
   const fallen = new THREE.InstancedMesh(new THREE.CircleGeometry(0.12, 5), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, side: THREE.DoubleSide }), 1500);
@@ -155,11 +167,11 @@ export function buildScene(scene, { high = true } = {}) {
     const seat = new THREE.Mesh(new THREE.BoxGeometry(2, 0.08, 0.5), benchMat); seat.position.y = 0.45; b.add(seat);
     const back = new THREE.Mesh(new THREE.BoxGeometry(2, 0.5, 0.06), benchMat); back.position.set(0, 0.75, -0.24); b.add(back);
     [-0.85, 0.85].forEach((x) => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.45), ironMat); l.position.set(x, 0.22, 0); b.add(l); });
-    b.position.set(-63 + i * 14, 0, -14.5 - (i % 2) * 6); if (Math.hypot(b.position.x - STAGE.x, b.position.z - STAGE.z) < 9) b.position.x += 10; scene.add(b);
+    b.position.set(-63 + i * 14, 0, -14.5 - (i % 2) * 6); if (Math.hypot(b.position.x - STAGE.x, b.position.z - STAGE.z) < 9) b.position.x += 10; scene.add(b); [-0.7, 0, 0.7].forEach((dx) => ob(b.position.x + dx, b.position.z, 0.4));
   }
   for (let i = 0; i < 9; i++) {
     let x = -64 + i * 16; const z = -18 - (i % 2) * 8; if (Math.abs(x - STAGE.x) < 8) x += 9;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 6), ironMat); pole.position.set(x, 1.8, z); scene.add(pole);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 6), ironMat); pole.position.set(x, 1.8, z); scene.add(pole); ob(x, z, 0.2);
     const globe = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), basic(0xfff2d0)); globe.position.set(x, 3.75, z); scene.add(globe);
   }
   // 야외 공연장 (반원 지붕 무대)
@@ -179,19 +191,20 @@ export function buildScene(scene, { high = true } = {}) {
     for (let y = 0; y < h; y += 8) { g.fillRect(0, y, w, 1); for (let x = (y / 8) % 2 ? 0 : 8; x < w; x += 16) g.fillRect(x, y, 1, 8); }
   });
   brickWall.wrapS = brickWall.wrapT = THREE.RepeatWrapping;
+  const backdrop = [];
   const mkBrick = (x, z, w, h, d) => {
     const t = brickWall.clone(); t.needsUpdate = true; t.repeat.set(w / 4, h / 4);
     const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), std(0xffffff, { map: t, roughness: 0.95 }));
-    b.position.set(x, h / 2, z); scene.add(b);
+    b.position.set(x, h / 2, z); scene.add(b); backdrop.push(b);
     // 띠창 (가로로 긴 창)
-    for (let k = 0; k < Math.floor(h / 5); k++) { const win = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, 0.7), basic(k % 2 ? 0xffd9a0 : 0x2a2433, { transparent: true, opacity: 0.85 })); win.position.set(x, 2.5 + k * 5, z + d / 2 + 0.02); scene.add(win); }
+    for (let k = 0; k < Math.floor(h / 5); k++) { const win = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, 0.7), basic(k % 2 ? 0xffd9a0 : 0x2a2433, { transparent: true, opacity: 0.85 })); win.position.set(x, 2.5 + k * 5, z + d / 2 + 0.02); scene.add(win); backdrop.push(win); }
     return b;
   };
   mkBrick(-38, -46, 30, 13, 14); mkBrick(-12, -50, 18, 17, 12); mkBrick(26, -47, 34, 11, 16); mkBrick(58, -44, 16, 15, 12);
   const theaterSign = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.3), new THREE.MeshBasicMaterial({ map: neonTexture('예술극장 · 오늘 공연 19:30', '#ffe8b0', 'rgba(0,0,0,0)'), toneMapped: false, transparent: true }));
-  theaterSign.position.set(-38, 9.5, -38.9); scene.add(theaterSign);
+  theaterSign.position.set(-38, 9.5, -38.9); scene.add(theaterSign); backdrop.push(theaterSign);
   const museumSign = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.2), new THREE.MeshBasicMaterial({ map: neonTexture('미술관 · 야간 개관', '#ffe8b0', 'rgba(0,0,0,0)'), toneMapped: false, transparent: true }));
-  museumSign.position.set(26, 8, -38.9); scene.add(museumSign);
+  museumSign.position.set(26, 8, -38.9); scene.add(museumSign); backdrop.push(museumSign);
   // 멀리 낙산 쪽 언덕 불빛
   const farMat = new THREE.MeshStandardMaterial({ color: 0x10131f, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.6 });
   for (let i = 0; i < 26; i++) { const h = 6 + Math.random() * 18, w = 6 + Math.random() * 8; const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 8), farMat); b.position.set(-100 + i * 8, h / 2 + 2 + Math.sin(i * 0.4) * 4, -85 - Math.random() * 15); scene.add(b); }
@@ -200,19 +213,19 @@ export function buildScene(scene, { high = true } = {}) {
   const shops = ['소극장 별빛', '극단 봄날', '사주카페', '코인노래방', '24시 편의점', '연극 할인티켓', '소극장 나무', '닭갈비', '방탈출카페', '오락실', '버스킹 카페', '즉석떡볶이', '소극장 달'];
   const neonColors = ['#4dd2ff', '#ff4dd2', '#ffd43b', '#ff6b35', '#69db7c', '#b197fc'];
   const posterColors = ['#ff6b6b', '#4dabf7', '#ffd43b', '#9775fa', '#63e6be', '#ff922b', '#f783ac'];
-  const neons = [];
+  const neons = [], shopSigns = [], shopBuildings = [];
   for (let i = 0; i < 13; i++) {
     const x = -66 + i * 11;
     if (Math.abs(x - 28) < 3) continue; // 혜화역 출구 자리
     const h = 9 + Math.random() * 14;
     const brickish = i % 3 === 1;
     const b = new THREE.Mesh(new THREE.BoxGeometry(10.4, h, 7), new THREE.MeshStandardMaterial({ color: brickish ? 0x5a2a20 : 0x1b1d2a, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.5, roughness: 0.9 }));
-    b.position.set(x, h / 2, 15.5); scene.add(b);
+    b.position.set(x, h / 2, 15.5); scene.add(b); shopBuildings.push({ mesh: b, color: b.material.color.getHex() });
     const shop = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 2.6), basic(i % 3 === 0 ? 0xfff2cc : 0xffe3b0, { transparent: true, opacity: 0.55 }));
     shop.position.set(x, 1.5, 11.95); shop.rotation.y = Math.PI; scene.add(shop);
     const c = neonColors[i % neonColors.length];
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.6), new THREE.MeshBasicMaterial({ map: neonTexture(shops[i % shops.length], c, 'rgba(10,10,20,0.85)'), toneMapped: false }));
-    sign.position.set(x, 3.6, 11.9); sign.rotation.y = Math.PI; scene.add(sign); neons.push(sign);
+    sign.position.set(x, 3.6, 11.9); sign.rotation.y = Math.PI; scene.add(sign); neons.push(sign); shopSigns.push({ mesh: sign, text: shops[i % shops.length], color: c, map: sign.material.map });
     // 연극 포스터 벽
     for (let k = 0; k < 4; k++) {
       const pc = posterColors[(i + k) % posterColors.length];
@@ -234,21 +247,21 @@ export function buildScene(scene, { high = true } = {}) {
     g.font = `600 28px ${FONT}`; g.fillStyle = '#556'; g.fillText('Hyehwa · 대학로 2번 출구', 132, 102);
   }), toneMapped: false, side: THREE.DoubleSide }));
   stnSign.position.set(0, 3.15, -1.9); stnSign.rotation.y = Math.PI; exit.add(stnSign);
-  exit.position.set(28, 0.06, 11.0); scene.add(exit);
+  exit.position.set(28, 0.06, 11.0); scene.add(exit); [26.8, 28, 29.2].forEach((x) => ob(x, 11.2, 0.75));
   const exitGlow = new THREE.PointLight(0xbfe3ff, 4, 8, 1.5); exitGlow.position.set(28, 2.4, 10.6); scene.add(exitGlow);
   // 가로등 + 은행나무 가로수(길 건너)
   for (let x = -55; x <= 55; x += 22) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 5.5, 6), std(0x30333f, { metalness: 0.6 }));
-    pole.position.set(x, 2.75, 9.4); scene.add(pole);
+    pole.position.set(x, 2.75, 9.4); scene.add(pole); ob(x, 9.4, 0.2);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), basic(0xfff0c8)); lamp.position.set(x, 5.5, 9.1); scene.add(lamp);
   }
   const ginkgo = std(0xf5c518, { flatShading: true, emissive: 0xf5c518, emissiveIntensity: 0.12 });
   for (let x = -60; x <= 60; x += 11) {
-    if (Math.abs(x + 5.5 - 28) < 4) continue;
+    if (Math.abs(x + 5.5 - 28) < 4 || Math.abs(x + 5.5) < 3) continue;
     const t = new THREE.Group();
     const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 3.4, 6), trunkMat); tr.position.y = 1.7; t.add(tr);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(1.3, 3.6, 7), ginkgo); cone.position.y = 4.4; t.add(cone);
-    t.position.set(x + 5.5, 0, 10.2); scene.add(t);
+    t.position.set(x + 5.5, 0, 10.2); scene.add(t); ob(x + 5.5, 10.2, 0.3);
   }
 
   // ---------- 전구 줄 (포차 위를 지그재그로) ----------
@@ -277,7 +290,23 @@ export function buildScene(scene, { high = true } = {}) {
   const weather = buildWeather(scene);
 
   const bungeo = buildBungeoCart(scene);
-  return { bulbs, stalls, weather, bungeo, sky: skyMat, stars, moon, neons, streaks, hemi, moonLight, streetMat, fog: scene.fog };
+  // 테마에 따라 도시 외형 바꾸기 (간판 문구·건물 색·바닥·나무 색·공원 배경)
+  const leafBase = leafMats.map((m) => m.color.getHex());
+  const parkBase = park.material.color.getHex();
+  function setCityLook(th) {
+    shopSigns.forEach((sg, i) => {
+      if (sg.mesh.material.map !== sg.map) sg.mesh.material.map.dispose();
+      if (th && th.signs?.length) { const col = th.signColors?.[i % th.signColors.length] || sg.color; sg.mesh.material.map = neonTexture(th.signs[i % th.signs.length], col, 'rgba(10,10,20,0.85)'); }
+      else sg.mesh.material.map = sg.map;
+      sg.mesh.material.needsUpdate = true;
+    });
+    shopBuildings.forEach((b) => b.mesh.material.color.set(th?.buildingColor || b.color));
+    leafMats.forEach((m, i) => { const c = th?.leaves?.length ? th.leaves[i % th.leaves.length] : leafBase[i]; m.color.set(c); m.emissive.set(c); });
+    park.material.color.set(th?.ground || parkBase);
+    const hideBackdrop = !!(th && th.set && th.set !== 'none' && th.set !== 'festival');
+    backdrop.forEach((o) => { o.visible = !hideBackdrop; });
+  }
+  return { key, setCityLook, bulbs, stalls, weather, bungeo, sky: skyMat, stars, moon, neons, streaks, hemi, moonLight, streetMat, fog: scene.fog };
 }
 
 function buildStall(scene, i, high) {
@@ -303,8 +332,8 @@ function buildStall(scene, i, high) {
   // 카운터 (나무)
   const wood = std(0x8a5a35, { roughness: 0.6 });
   const counter = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.95, 0.7), std(0x5b3c26));
-  counter.position.set(0, 0.48, COUNTER_Z - 0.2); counter.castShadow = true; g.add(counter);
-  const top = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.06, 0.95), wood); top.position.set(0, 0.98, COUNTER_Z - 0.1); g.add(top);
+  counter.position.set(0, 0.48, COUNTER_Z - 0.2); counter.castShadow = true; counter.receiveShadow = true; g.add(counter);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.06, 0.95), wood); top.position.set(0, 0.98, COUNTER_Z - 0.1); top.receiveShadow = true; top.castShadow = true; g.add(top);
   // 조리대 + 어묵 냄비 + 김
   const stove = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 0.7), std(0x9aa0aa, { metalness: 0.7, roughness: 0.3 })); stove.position.set(-1.1, 0.45, -3.4); g.add(stove);
   const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.32, 16), std(0xc0c6d0, { metalness: 0.8, roughness: 0.25 })); pot.position.set(-1.1, 1.06, -3.4); g.add(pot);
@@ -316,7 +345,7 @@ function buildStall(scene, i, high) {
   // 전구 + 조명
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), basic(0xffd27a)); bulb.position.set(-0.9, 2.6, -2.9); g.add(bulb);
   const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.35, 4), std(0x111111)); cord.position.set(-0.9, 2.82, -2.9); g.add(cord);
-  const light = new THREE.PointLight(0xffb35c, high ? 9 : 7, 10, 1.3); light.position.set(-0.4, 2.7, -0.9); g.add(light);
+  const light = new THREE.PointLight(0xffb35c, high ? 6.5 : 7, 10, 1.3); light.position.set(-0.4, 2.7, -0.9); g.add(light);
   // 의자 (빨강·파랑 플라스틱)
   const seats = SEAT_OFFSETS.map((ox, k) => {
     const st = new THREE.Group();

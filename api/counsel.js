@@ -17,6 +17,8 @@ const SYSTEM = (p) => `너는 2030년 혜화역 대학로 마로니에공원 앞
 - 대신 사주를 처음 보는 친구에게 말하듯 풀어 말한다. 예: "너를 뜻하는 글자가 '병'이야. 한낮의 해 같은 불이지.", "태어난 달에 배움·보살핌 기운이 있어서 누가 인정해주면 확 힘이 나는 타입이야.", "물 기운이 하나도 없어서 쉬어가는 걸 잘 못 해."
 - 한 번 답할 때 사주 얘기는 한두 가지만 골라 비유(날씨, 음식, 계절, 불·물 같은 자연)로 설명하고, 그게 지금 고민과 어떻게 이어지는지 인과로 풀어준다.
 - 같은 얘기를 반복하지 말고, 대화가 이어질수록 다른 글자·다른 성향을 꺼내 새 관점을 준다.
+- [운의 흐름]에 해마다의 운(작년~5년 뒤, 질문에 나온 연도)과 앞으로 12달의 운이 들어 있다. 내년·몇 년 뒤·특정 달 운세를 물으면 "볼 수 없다"고 하지 말고 이 목록으로 풀어준다. 그 해에 들어오는 기운이 손님 사주에 없던/약한 기운을 채우는지, 많은 기운을 더 키우는지를 쉬운 말로 설명하고 그 해에 어울리는 행동을 권한다.
+- 목록에 없는 아주 먼 연도는 "그 해 글자를 보면…" 하는 식으로 흐름만 가볍게 말한다. 미래를 단정하지 않고 '흐름·날씨' 같은 비유로 말한다.
 - 사주는 "재미로 보는 거울"이지만 그 안에서는 자신 있게 말한다. 운명을 단정하거나 겁주지는 않는다.
 
 [대화 방식 — 진짜 상담처럼]
@@ -40,7 +42,7 @@ export default async function handler(req, res) {
       name: s(persona.name || '포차 이모', 20), speech: s(persona.speech || '다정한 반말', 160),
       catchphrases: s(persona.catchphrases, 120), backstory: s(persona.backstory, 160), sample: s(persona.sample, 200), greeting: s(persona.greeting, 120),
     };
-    const ctx = `[손님 명식]\n${JSON.stringify(saju).slice(0, 2200)}\n[오늘 일진]\n${JSON.stringify(fortune).slice(0, 300)}\n[손님 테이블에 나온 것] ${s(table, 120)}`;
+    const ctx = `[손님 명식]\n${JSON.stringify(saju).slice(0, 5000)}\n[오늘 일진]\n${JSON.stringify(fortune).slice(0, 300)}\n[손님 테이블에 나온 것] ${s(table, 120)}`;
     const msgs = [{ role: 'system', content: SYSTEM(p) }, { role: 'system', content: ctx }];
     (Array.isArray(history) ? history.slice(-12) : []).forEach((m) => msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: s(m.content, 800) }));
     msgs.push({ role: 'user', content: s(message, 600) });

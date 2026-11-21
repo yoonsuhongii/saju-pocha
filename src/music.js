@@ -1,5 +1,5 @@
 // 버스킹 음악: WebAudio로 기타 반주 + 멜로디를 실시간 합성 (음원 파일 없음)
-import { audioCtx } from './audio.js';
+import { audioCtx, VOL } from './audio.js';
 
 export const SONGS = [
   { id: 'maronnier', title: '마로니에 밤산책', mood: 'warm' },
@@ -45,7 +45,7 @@ function pluck(t, midi, vol, dur = 1.6) {
 export function tickMusic(song, volume, paused) {
   const B = ensureBus(); if (!B) return;
   const { ac, g } = B;
-  g.gain.setTargetAtTime(paused ? 0 : volume * 0.9, ac.currentTime, 0.3);
+  g.gain.setTargetAtTime(paused ? 0 : volume * 0.9 * VOL.music * 1.6, ac.currentTime, 0.3);
   if (paused || volume < 0.02) { playing = false; return; }
   if (!playing || curSong !== song.id) { playing = true; curSong = song.id; nextBeat = ac.currentTime + 0.1; beatIdx = 0; }
   const M = MOODS[song.mood] || MOODS.warm, beat = 60 / M.bpm;

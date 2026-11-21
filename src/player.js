@@ -53,6 +53,30 @@ export class Player {
 
   say(text, now) { say(this, text, now); }
   setCarry(id) { setCarry(this, id); }
+  // 사람·가로등·나무(원)와 차(상자)에 부딪히면 밀려남
+  resolveCollisions() {
+    const R = 0.32, p = this.pos;
+    this.bumped = null;
+    for (let it = 0; it < 2; it++) {
+      (this.colliders ? this.colliders() : []).forEach((c) => {
+        const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), min = c.r + R;
+        if (d < min) {
+          const ux = d > 1e-4 ? dx / d : 1, uz = d > 1e-4 ? dz / d : 0;
+          const nx = c.x + ux * min, nz = c.z + uz * min;
+          if (walkable(nx, nz)) { p.x = nx; p.z = nz; } else if (walkable(nx, p.z)) p.x = nx; else if (walkable(p.x, nz)) p.z = nz;
+          if (c.kind) this.bumped = c.kind;
+        }
+      });
+      (this.boxes ? this.boxes() : []).forEach((b) => {
+        const ox = b.hx + R - Math.abs(p.x - b.x), oz = b.hz + R - Math.abs(p.z - b.z);
+        if (ox > 0 && oz > 0) {
+          if (oz < ox) { const nz = b.z + Math.sign(p.z - b.z || 1) * (b.hz + R); if (walkable(p.x, nz)) p.z = nz; else p.x = b.x + Math.sign(p.x - b.x || 1) * (b.hx + R); }
+          else { const nx = b.x + Math.sign(p.x - b.x || 1) * (b.hx + R); if (walkable(nx, p.z)) p.x = nx; }
+          this.bumped = 'car';
+        }
+      });
+    }
+  }
 
   sitAt(seat) {
     this.seat = seat;
@@ -83,6 +107,7 @@ export class Player {
       this.walking = true;
       this.phase += dt * (input.run ? 13 : 9);
     }
+    if (!this.seat) this.resolveCollisions();
     const cur = this.group.rotation.y;
     this.group.rotation.y = cur + wrap(this.facing - cur) * Math.min(1, dt * 10);
     if (this.wave > 0) this.wave -= dt;

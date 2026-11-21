@@ -5,15 +5,18 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildStreet, PLAY_PRESETS } from './street.js';
 import { tickMusic, SONGS } from './music.js';
-import { buildScene, updateWeather, themeWeather, STAGE, drawStallSign, setStallColor, itemMesh, MENU, MENU_BY_ID, SNACK_BY_EL, BUNGEO_POS, STALL_COUNT, STALL_X, SEAT_OFFSETS, SEAT_Z, COUNTER_Z } from './scene.js';
+import { buildScene, updateWeather, themeWeather, STAGE, OBSTACLES, drawStallSign, setStallColor, itemMesh, MENU, MENU_BY_ID, SNACK_BY_EL, BUNGEO_POS, STALL_COUNT, STALL_X, SEAT_OFFSETS, SEAT_Z, COUNTER_Z } from './scene.js';
 import { makeCharacter, animateCharacter, nameSprite, bubbleSprite, randomLook, randomName } from './character.js';
 import { Player, Avatar, createInput } from './player.js';
 import { connect, botGuests, botChatter, mixWeather, ONLINE_CAPABLE } from './net.js';
-import { calcSaju, todayFortune, snackFor, sajuSummary, sajuDetail, ELEMENTS, relation } from './saju.js';
+import { calcSaju, todayFortune, snackFor, sajuSummary, sajuDetail, luckContext, ELEMENTS, relation } from './saju.js';
 import { makePersona, counsel, stallDefault, neighbor, cleanChat, styleize, makePlay, makeTheme } from './ai.js';
-import { startAudio, setRain, clink, toggleSound, clap, honk } from './audio.js';
+import { startAudio, setRain, clink, toggleSound, clap, honk, setVolume, isOn, VOL } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -27,16 +30,24 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, HIGH ? 2 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
+renderer.shadowMap.enabled = HIGH; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
+// 은은한 환경광(반사·부드러운 음영) — 밤이라 약하게
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = HIGH ? 0.22 : 0.15;
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 900);
 camera.position.set(0, 6, 14);
 const world = buildScene(scene, { high: HIGH });
 world.stalls.forEach((s) => { s.baseLight = s.light.intensity; });
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), HIGH ? 0.75 : 0.55, 0.6, 0.78);
+let gtao = null;
+if (HIGH) { gtao = new GTAOPass(scene, camera, innerWidth, innerHeight); gtao.blendIntensity = 0.85; gtao.updateGtaoMaterial({ radius: 0.5, distanceFallOff: 1, thickness: 1 }); composer.addPass(gtao); }
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), HIGH ? 0.7 : 0.55, 0.6, 0.86);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+if (HIGH) composer.addPass(new SMAAPass(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio()));
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
@@ -100,18 +111,31 @@ let player = null, input = null, net = null, entered = false;
 // ---------------- 입장 화면 ----------------
 const HOURS = [['자시', 23, 1], ['축시', 1, 3], ['인시', 3, 5], ['묘시', 5, 7], ['진시', 7, 9], ['사시', 9, 11], ['오시', 11, 13], ['미시', 13, 15], ['신시', 15, 17], ['유시', 17, 19], ['술시', 19, 21], ['해시', 21, 23]];
 HOURS.forEach(([n, a, b], i) => { const o = document.createElement('option'); o.value = String(i * 2); o.textContent = `${n} (${String(a).padStart(2, '0')}~${String(b).padStart(2, '0')}시)`; $('hour').appendChild(o); });
-$('my-name').textContent = me.name;
-$('reroll').onclick = () => { me.name = randomName(); me.look = randomLook(); $('my-name').textContent = me.name; };
+$('my-name').value = me.name;
+$('reroll').onclick = () => { me.name = randomName(); me.look = randomLook(); $('my-name').value = me.name; };
+// 생년월일: 연도는 직접 입력, 월·일은 선택
+for (let m = 1; m <= 12; m++) { const o = document.createElement('option'); o.value = m; o.textContent = m; $('b-month').appendChild(o); }
+function fillDays() {
+  const y = Number($('b-year').value) || 2000, m = Number($('b-month').value) || 1, keep = $('b-day').value || '1';
+  const n = new Date(y, m, 0).getDate();
+  $('b-day').innerHTML = '';
+  for (let d = 1; d <= n; d++) { const o = document.createElement('option'); o.value = d; o.textContent = d; $('b-day').appendChild(o); }
+  $('b-day').value = Math.min(Number(keep), n);
+}
+fillDays();
+$('b-month').onchange = fillDays;
+$('b-year').oninput = () => { $('b-year').value = $('b-year').value.replace(/\D/g, '').slice(0, 4); if ($('b-year').value.length === 4) fillDays(); };
+function myName() { return cleanChat($('my-name').value).replace(/♡/g, '').trim().slice(0, 10) || randomName(); }
 $('enter').onclick = () => {
-  const v = $('birth').value;
-  if (!v) { toast('생년월일을 골라주세요'); return; }
-  const [y, m, d] = v.split('-').map(Number);
+  const y = Number($('b-year').value), m = Number($('b-month').value), d = Number($('b-day').value);
+  if (!(y >= 1930 && y <= 2025)) { toast('태어난 연도를 4자리로 적어주세요 (예: 2006)'); $('b-year').focus(); return; }
+  me.name = myName();
   const hv = $('hour').value;
   me.saju = calcSaju({ y, m, d, hour: hv === '' ? null : Number(hv) });
   me.el = me.saju.dominant;
   enter();
 };
-$('enter-skip').onclick = () => enter();
+$('enter-skip').onclick = () => { me.name = myName(); enter(); };
 
 function enter() {
   entered = true;
@@ -122,6 +146,14 @@ function enter() {
   player.pos.set(-6 + Math.random() * 12, 0, 5.5);
   player.yaw = 0.15;
   input = createInput(canvas, player);
+  // 충돌: 고정 물체 + 행인·다른 손님 + 차
+  player.colliders = () => {
+    const list = OBSTACLES.slice();
+    street.colliders().forEach((c) => list.push(c));
+    avatars.forEach((av) => { const p = av.group.position; if (Math.abs(p.z - SEAT_Z - 0.08) > 0.05) list.push({ x: p.x, z: p.z, r: 0.3, kind: 'person' }); });
+    return list;
+  };
+  player.boxes = () => street.carBoxes();
   startAudio();
   net = connect(me, {
     onPeers: () => {},
@@ -227,7 +259,7 @@ function openPanel(i) {
   if (me.carry) { me.orders.push(me.carry); me.carry = null; player.setCarry(null); setTable(me.seatKey, me.orders); renderMenu(); }
   log.innerHTML = '';
   renderPanelHeader();
-  st.history.forEach((m) => addMsg(m.content, m.role === 'assistant' ? 'bot' : 'me'));
+  st.history.forEach((m) => { if (m.content.startsWith('(사장님이')) return; addMsg(m.content.replace(/^\([^)]*서빙\) /, ''), m.role === 'assistant' ? 'bot' : 'me'); });
   if (!st.greeted) {
     st.greeted = true;
     say(st.persona.greeting || '어서 와요.');
@@ -240,7 +272,7 @@ function openPanel(i) {
   renderChips();
 }
 function say(text) { const st = stallState[curStall]; st.history.push({ role: 'assistant', content: text }); addMsg(text, 'bot'); }
-const CHIPS = ['내 사주 전체 풀이해줘', '오늘 운세 어때요?', '진로가 고민이에요', '연애운 봐주세요', '요즘 너무 지쳐요', '사람 관계가 힘들어요'];
+const CHIPS = ['내 사주 전체 풀이해줘', '오늘 운세 어때요?', '내년 운세 봐주세요', '진로가 고민이에요', '연애운 봐주세요', '요즘 너무 지쳐요', '사람 관계가 힘들어요'];
 function renderChips() {
   const c = $('chips'); c.innerHTML = '';
   CHIPS.forEach((t) => { const b = document.createElement('button'); b.textContent = t; b.type = 'button'; b.onclick = () => ask(t); c.appendChild(b); });
@@ -261,7 +293,7 @@ async function ask(text) {
   const thinkTimer = setInterval(() => { const el = typing.querySelector('.think-txt'); if (!el) return; el.style.opacity = 0; setTimeout(() => { ti = (ti + 1) % THINK.length; el.textContent = THINK[ti]; el.style.opacity = 1; }, 250); }, 1800);
   if (st.counselor) bubbleOn(st.counselor, '🤔 …', 30000);
   talking = i;
-  const saju = me.saju ? sajuDetail(me.saju) : { note: '사주 정보 없음 — 사주 대신 대화로만 상담' };
+  const saju = me.saju ? { ...sajuDetail(me.saju), 운의_흐름: luckContext(me.saju, text) } : { note: '사주 정보 없음 — 사주 대신 대화로만 상담' };
   const res = await counsel({
     persona: (({ name, speech, catchphrases, backstory, sample, greeting }) => ({ name, speech, catchphrases, backstory, sample, greeting }))(st.persona), saju,
     table: me.orders.map((id) => MENU_BY_ID[id]?.name || (id === 'bungeo' ? '붕어빵' : id)).join(', ') || '아직 주문 없음',
@@ -296,20 +328,30 @@ async function restyle(prompt) {
   applyStall(i, p, { at: style.at, by: me.id });
   me.stallStyle = style;
   net.stall(style); net.update();
-  stallState[i].history = [];
-  if (curStall === i) { renderPanelHeader(); say(p.greeting || '어서 와요.'); }
+  // 대화는 이어서: 바뀐 사장님이 앞 대화를 알고 새 말투로 인사
+  stallState[i].history.push({ role: 'assistant', content: `(사장님이 "${p.name}"(으)로 바뀜. 앞의 대화 내용은 그대로 기억하고 이제부터 새 말투로 이어서 말함)` });
+  if (curStall === i) { renderPanelHeader(); addMsg(`✨ 사장님이 ${p.name}(으)로 바뀌었어요 · 대화는 그대로 이어져요`, 'sys'); say(p.greeting || '어서 와요.'); }
   busy = false;
 }
 
 $('btn-cheers').onclick = () => openCheersPick();
-$('btn-sound').onclick = () => { $('btn-sound').textContent = toggleSound() ? '🔊' : '🔇'; };
+$('btn-sound').onclick = () => { const on = toggleSound(); $('btn-sound').textContent = on ? '🔊' : '🔇'; $('s-on').checked = on; };
+// 설정: 소리 3종 볼륨 + 그래픽 품질
+$('btn-settings').onclick = () => { document.querySelectorAll('.seg button').forEach((b) => b.classList.toggle('on', (b.dataset.q === 'high') === HIGH)); $('settings-modal').classList.remove('hidden'); };
+$('s-on').onchange = () => { if ($('s-on').checked !== isOn()) $('btn-sound').click(); };
+[['amb', 'v-amb'], ['music', 'v-music'], ['sfx', 'v-sfx']].forEach(([k, id]) => {
+  try { const saved = localStorage.getItem('vol-' + k); if (saved !== null) { $(id).value = saved; VOL[k] = saved / 100; } } catch {}
+  $(`${id}-t`).textContent = `${$(id).value}%`;
+  $(id).oninput = () => { const v = $(id).value / 100; setVolume(k, v); $(`${id}-t`).textContent = `${$(id).value}%`; try { localStorage.setItem('vol-' + k, $(id).value); } catch {} };
+});
+document.querySelectorAll('.seg button').forEach((b) => { b.onclick = () => { const u = new URL(location.href); u.searchParams.set('q', b.dataset.q); location.href = u.toString(); }; });
 $('btn-card').onclick = () => showCard();
 $('cardview').onclick = (e) => { if (e.target.id === 'cardview') $('cardview').classList.add('hidden'); };
 function showCard() {
   const el = $('saju-card');
   if (!me.saju) { el.innerHTML = '<h2>📜 내 사주</h2><p class="muted">사주 없이 구경 중이에요.<br>새로고침 후 생년월일을 넣어보세요.</p>'; $('cardview').classList.remove('hidden'); return; }
   const s = me.saju, f = todayFortune(s), P = s.pillars;
-  const col = (lab, p) => `<div><div class="lab">${lab}</div><div class="h">${p ? p.ko.split('').join('<br>') : '?<br>?'}</div><div class="lab">${p ? p.h : '모름'}</div></div>`;
+  const col = (lab, p) => `<div><div class="lab">${lab}</div><div class="h">${p ? p.h.split('').join('<br>') : '?<br>?'}</div><div class="lab">${p ? p.ko : '모름'}</div></div>`;
   const max = Math.max(...Object.values(s.count), 1);
   const bars = Object.keys(s.count).map((k) => `<div class="bar"><span>${ELEMENTS[k].name}</span><i style="width:${(s.count[k] / max) * 100}%;background:${ELEMENTS[k].color}"></i><b>${s.count[k]}</b></div>`).join('');
   el.innerHTML = `<div class="kicker">오늘 밤의 사주 카드 · ${me.name}</div><div class="pillars">${col('시', P.hour)}${col('일', P.day)}${col('월', P.month)}${col('년', P.year)}</div>
@@ -661,7 +703,7 @@ function cheersWith(target) {
 // ---------------- 거리 생활감 · 버스킹 · 연극 · 테마 ----------------
 const street = buildStreet(scene, { high: HIGH });
 let theme = null; // { ...theme, at, by, until }
-let lastRush = -1, honkT = 0;
+let lastRush = -1, honkT = 0, bumpT = 0;
 const showModal = (id) => $(id).classList.remove('hidden');
 document.querySelectorAll('.close-modal').forEach((b) => { b.onclick = () => b.closest('.overlay').classList.add('hidden'); });
 
@@ -670,7 +712,7 @@ const THEME_SEC = 180;
 let lastThemeAt = 0;
 $('btn-theme').onclick = () => {
   const c = $('theme-chips'); c.innerHTML = '';
-  ['첫눈 오는 크리스마스 이브', '봄밤 벚꽃 축제', '으스스한 할로윈 거리', '한여름 밤 불꽃 축제', '비 오는 재즈바 감성'].forEach((t) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.onclick = () => requestTheme(t); c.appendChild(b); });
+  ['캠퍼스 분위기', '한옥 마을 전통 야행', '사이버펑크 미래 도시', '대학로 야시장', '혜화역에 바다가 왔다', '첫눈 오는 크리스마스 이브', '으스스한 할로윈 거리'].forEach((t) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.onclick = () => requestTheme(t); c.appendChild(b); });
   showModal('theme-modal'); setTimeout(() => $('theme-q').focus(), 50);
 };
 $('theme-form').onsubmit = (e) => { e.preventDefault(); const v = $('theme-q').value.trim(); if (v) { $('theme-q').value = ''; requestTheme(v); } };
@@ -687,7 +729,7 @@ async function requestTheme(prompt) {
 function applyTheme(th, mine = false) {
   if (th && (th.until < Date.now() || (theme && th.at <= theme.at))) return;
   theme = th;
-  street.applyTheme(th);
+  street.applyTheme(th); world.setCityLook(th);
   if (th) {
     sparkle(new THREE.Vector3(player ? player.pos.x : 0, 3, player ? player.pos.z - 3 : 0), '#ffd27a');
     toast(mine ? `✨ 거리가 "${th.title}"(으)로 바뀌었어요!` : `✨ ${th.byName || '누군가'}님이 거리를 "${th.title}"(으)로 바꿨어요`);
@@ -695,7 +737,7 @@ function applyTheme(th, mine = false) {
   }
 }
 function tickTheme() {
-  if (theme && Date.now() > theme.until) { theme = null; me.theme = null; street.applyTheme(null); toast('거리가 원래 모습으로 돌아왔어요'); }
+  if (theme && Date.now() > theme.until) { theme = null; me.theme = null; street.applyTheme(null); world.setCityLook(null); toast('거리가 원래 모습으로 돌아왔어요'); }
   const pill = $('theme-pill');
   if (theme) { const left = Math.max(0, Math.ceil((theme.until - Date.now()) / 1000)); pill.textContent = `✨ ${theme.title} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} 남음`; pill.classList.remove('hidden'); }
   else pill.classList.add('hidden');
@@ -755,7 +797,7 @@ function startPlay(p) {
 }
 
 function tickStreet(dt, now, nowSec) {
-  street.update(nowSec, dt, now);
+  street.update(nowSec, dt, now, player && !player.seat ? player.pos : null);
   tickTheme();
   // 음악: 무대와의 거리에 따라 볼륨
   if (player) {
@@ -773,6 +815,7 @@ function tickStreet(dt, now, nowSec) {
     if (street.rush >= 0 && street.rush !== lastRush) { lastRush = street.rush; if (Math.abs(player.pos.x - 28) < 35 && player.pos.z > -1) toast('🚇 혜화역에 열차 도착 — 사람들이 쏟아져 나와요'); }
     // 차도에 서 있으면 빵빵
     if (!player.seat && street.nearCar(player.pos.x, player.pos.z) && now > honkT) { honkT = now + 3000; honk(); toast('🚕 빵빵! 차 조심해요'); }
+    if (player.bumped === 'person' && now > bumpT) { bumpT = now + 2500; if (Math.random() < 0.5) toast('앗, 죄송합니다! 🙇'); }
   }
 }
 
@@ -828,6 +871,7 @@ function frame() {
   viewOff.x += (ox - viewOff.x) * Math.min(1, dt * 4); viewOff.y += (oy - viewOff.y) * Math.min(1, dt * 4);
   if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(W, H, viewOff.x, viewOff.y, W, H); else camera.clearViewOffset();
   tickStreet(dt, now, nowSec);
+  { const f = player ? player.pos : camera.position; world.key.target.position.set(f.x, 0, f.z); world.key.position.set(f.x + 6, 14, f.z + 10); }
   updateWeather(world.weather, world, theme ? themeWeather(theme) : weatherEl, dt, now);
   setRain(world.weather.cur.rain);
   world.streaks.forEach((s, i) => { s.material.opacity = 0.5 + Math.sin(now / 700 + i) * 0.15; });

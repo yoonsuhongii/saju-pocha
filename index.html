@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <title>사주포차 거리 2030 — 월드모델 파일럿</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
@@ -15,19 +16,25 @@
       <div class="kicker">2030 월드모델 · 파일럿</div>
       <h1>🏮 사주포차 거리</h1>
       <p class="lead">혜화역 2번 출구, 마로니에공원 앞 포장마차 거리.<br />내 사주를 아는 사장님에게 오늘의 고민을 털어놔요.</p>
-      <div class="me-preview">
-        <div><span class="muted">오늘 밤 내 이름</span><b id="my-name">-</b></div>
-        <button id="reroll" class="ghost small">🎲 다시</button>
-      </div>
-      <label class="field">생년월일 (양력)
-        <input id="birth" type="date" min="1940-01-01" max="2025-12-31" value="2000-01-01" />
+      <label class="field">거리에서 쓸 이름 (다른 손님에게 보여요)
+        <div class="row">
+          <input id="my-name" maxlength="10" autocomplete="off" placeholder="이름 또는 별명" />
+          <button id="reroll" type="button" class="ghost small" title="랜덤 이름·캐릭터">🎲</button>
+        </div>
       </label>
+      <div class="field">생년월일 (양력)
+        <div class="birth-row">
+          <input id="b-year" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="2006" autocomplete="off" /><span>년</span>
+          <select id="b-month"></select><span>월</span>
+          <select id="b-day"></select><span>일</span>
+        </div>
+      </div>
       <label class="field">태어난 시간
         <select id="hour">
           <option value="">모름</option>
         </select>
       </label>
-      <p class="tiny muted">생년월일은 이 기기 안에서만 계산돼요. 다른 손님에게는 대표 오행(예: 水) 하나만 보여요. 사주는 재미로 보는 거울이에요.</p>
+      <p class="tiny muted">생년월일은 이 기기 안에서만 계산돼요. 다른 손님에게는 대표 기운(예: 물) 하나만 보여요. 사주는 재미로 보는 거울이에요.</p>
       <button id="enter" class="primary">포차 거리 입장</button>
       <button id="enter-skip" class="ghost">사주 없이 구경만</button>
     </div>
@@ -44,6 +51,7 @@
     <button id="btn-theme" class="round" title="거리 바꾸기">✨</button>
     <button id="btn-chat" class="round" title="말하기">💬</button>
     <button id="btn-card" class="round" title="내 사주">📜</button>
+    <button id="btn-settings" class="round" title="설정">⚙️</button>
   </div>
   <div id="hint" class="hint hidden">드래그로 둘러보기 · WASD/조이스틱으로 걷기 · 빈 의자에 가까이 가면 앉을 수 있어요</div>
   <button id="btn-sit" class="action hidden">🪑 앉기</button>
@@ -161,6 +169,33 @@
         <button class="ghost" data-flavor="pizza">피자 붕어빵</button>
       </div>
       <button id="bungeo-close" class="ghost small">그냥 갈게요</button>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="settings-modal" class="overlay hidden">
+    <div class="card settings">
+      <header class="set-head"><h2>설정</h2><button class="round close-modal" aria-label="닫기">✕</button></header>
+      <div class="set-row">
+        <div><b>내가 듣는 소리</b><div class="muted tiny">세 가지 소리를 내 취향대로</div></div>
+        <label class="switch"><input id="s-on" type="checkbox" checked /><i></i></label>
+      </div>
+      <div class="set-card">
+        <div class="set-line"><span class="ico">🌧️</span><div><b>환경음</b><div class="muted tiny">빗소리와 거리의 웅성임</div></div></div>
+        <div class="slider"><input id="v-amb" type="range" min="0" max="100" value="60" /><span id="v-amb-t">60%</span></div>
+      </div>
+      <div class="set-card">
+        <div class="set-line"><span class="ico">🎸</span><div><b>버스킹 음악</b><div class="muted tiny">야외무대에 가까울수록 크게 들려요</div></div></div>
+        <div class="slider"><input id="v-music" type="range" min="0" max="100" value="60" /><span id="v-music-t">60%</span></div>
+      </div>
+      <div class="set-card">
+        <div class="set-line"><span class="ico">🔔</span><div><b>효과음</b><div class="muted tiny">건배 소리·박수·경적</div></div></div>
+        <div class="slider"><input id="v-sfx" type="range" min="0" max="100" value="70" /><span id="v-sfx-t">70%</span></div>
+      </div>
+      <div class="set-row">
+        <div><b>그래픽</b><div class="muted tiny">고화질은 그림자·입체감이 더해져요 (새로고침)</div></div>
+        <div class="seg"><button data-q="high">고화질</button><button data-q="low">가볍게</button></div>
+      </div>
     </div>
   </section>
 
