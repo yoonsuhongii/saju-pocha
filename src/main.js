@@ -181,7 +181,7 @@ function enter() {
   startAudio();
   net = connect(me, {
     onPeers: () => {},
-    onStatus: (s) => { $('status').textContent = s.online ? `🟢 ${s.room}번 거리 · ${s.count}명 접속 중` : (ONLINE_CAPABLE ? '연결 중…' : '오프라인 미리보기 · AI 손님과 함께'); },
+    onStatus: (s) => { $('status').textContent = s.online ? `🟢 ${s.room}번 거리 · ${s.count}명 접속 중` : !ONLINE_CAPABLE ? '오프라인 미리보기 · AI 손님과 함께' : s.error ? `⚠️ 연결 실패 · ${s.error}`.slice(0, 60) : '연결 중…'; },
     onStall: (style, by) => {
       if (!style || style.stall === undefined) return;
       const st = stallState[style.stall];
@@ -914,33 +914,42 @@ $('btn-wall').onclick = () => { openNote = null; renderWall(); $('wall-modal').c
 $('wall-q').oninput = () => { $('wall-count').textContent = `${$('wall-q').value.length}/80 · 연락처·실명은 적지 마세요`; };
 function renderWall() {
   $('wall-note').textContent = wall.online ? '' : '(지금은 예시 고민만 보여요 — 내가 붙인 고민은 이 기기에서만 보여요)';
+  // 위쪽 크게 보기
+  const det = $('wall-detail'); det.innerHTML = '';
+  if (openNote) {
+    const r = openNote;
+    det.style.background = EL_COLOR[r.el] || '#fff3bf';
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'close-note'; x.textContent = '✕'; x.onclick = () => { openNote = null; renderWall(); }; det.appendChild(x);
+    const t = document.createElement('div'); t.textContent = r.text; t.style.paddingRight = '30px'; det.appendChild(t);
+    if (r.reply) { const rp = document.createElement('div'); rp.className = 'reply'; rp.textContent = `🏮 ${r.reply_by || '포차 사장님'}: ${r.reply}`; det.appendChild(rp); }
+    const bar = document.createElement('div'); bar.className = 'reacts';
+    [['cheer', '🍶 나도 그래', 'cheers'], ['hug', '🫂 힘내', 'hugs'], ['fire', '🔥 할 수 있어', 'fires']].forEach(([k, label, col]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = `${label} ${r[col] || 0}`;
+      if (wall.hasReacted(r.id, k)) b.classList.add('done');
+      b.onclick = async () => { if (await wall.react(r, k)) { clink(); renderWall(); } };
+      bar.appendChild(b);
+    });
+    if (!wall.isMine(r.id)) {
+      const rep = document.createElement('button'); rep.type = 'button'; rep.className = 'report'; rep.textContent = '신고';
+      rep.onclick = () => { if (confirm('이 고민을 신고할까요? 신고가 쌓이면 벽에서 내려가요.')) { wall.report(r); openNote = null; toast('신고했어요'); renderWall(); } };
+      bar.appendChild(rep);
+    }
+    det.appendChild(bar);
+    det.classList.remove('hidden');
+  } else det.classList.add('hidden');
+  // 포스트잇 목록
   const grid = $('wall-grid'); grid.innerHTML = '';
   wall.rows.forEach((r, i) => {
     const d = document.createElement('div');
-    d.className = 'note' + (openNote === r ? ' open' : '');
+    d.className = 'note' + (openNote === r ? ' sel' : '');
     d.style.background = EL_COLOR[r.el] || '#fff3bf';
     d.style.transform = `rotate(${((i * 37) % 7 - 3) * 0.6}deg)`;
     const tape = document.createElement('i'); tape.className = 'tape'; d.appendChild(tape);
     const t = document.createElement('div'); t.textContent = r.text; d.appendChild(t);
     const total = (r.cheers || 0) + (r.hugs || 0) + (r.fires || 0);
-    if (openNote !== r) {
-      const c = document.createElement('span'); c.className = 'cnt'; c.textContent = `${total ? '🍶 ' + total : ''}${r.reply ? ' 💬' : ''}`; d.appendChild(c);
-      if (wall.isMine(r.id)) { const m = document.createElement('span'); m.className = 'mine'; m.textContent = '내 고민'; d.appendChild(m); }
-      d.onclick = () => { openNote = r; renderWall(); };
-    } else {
-      if (r.reply) { const rp = document.createElement('div'); rp.className = 'reply'; rp.textContent = `🏮 ${r.reply_by || '포차 사장님'}: ${r.reply}`; d.appendChild(rp); }
-      const bar = document.createElement('div'); bar.className = 'reacts';
-      [['cheer', '🍶 나도 그래', 'cheers'], ['hug', '🫂 힘내', 'hugs'], ['fire', '🔥 할 수 있어', 'fires']].forEach(([k, label, col]) => {
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = `${label} ${r[col] || 0}`;
-        if (wall.hasReacted(r.id, k)) b.classList.add('done');
-        b.onclick = async (e) => { e.stopPropagation(); if (await wall.react(r, k)) { clink(); renderWall(); } };
-        bar.appendChild(b);
-      });
-      const rep = document.createElement('button'); rep.type = 'button'; rep.className = 'report'; rep.textContent = '신고';
-      rep.onclick = (e) => { e.stopPropagation(); if (confirm('이 고민을 신고할까요? 신고가 쌓이면 벽에서 내려가요.')) { wall.report(r); openNote = null; toast('신고했어요'); } };
-      bar.appendChild(rep); d.appendChild(bar);
-      d.onclick = () => { openNote = null; renderWall(); };
-    }
+    const c = document.createElement('span'); c.className = 'cnt'; c.textContent = `${total ? '🍶 ' + total : ''}${r.reply ? ' 💬' : ''}`; d.appendChild(c);
+    if (wall.isMine(r.id) || r.local) { const m = document.createElement('span'); m.className = 'mine'; m.textContent = '내 고민'; d.appendChild(m); }
+    d.onclick = () => { openNote = openNote === r ? null : r; renderWall(); $('wall-detail').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
     grid.appendChild(d);
   });
 }

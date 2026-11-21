@@ -58,9 +58,10 @@ export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBun
       .on('broadcast', { event: 'busk' }, ({ payload }) => onBusk?.(payload))
       .on('broadcast', { event: 'clap' }, ({ payload }) => onClap?.(payload))
       .on('broadcast', { event: 'photo' }, ({ payload }) => onPhoto?.(payload))
-      .subscribe(async (status) => {
+      .subscribe(async (status, err) => {
+        console.info('[사주포차 멀티플레이]', status, err?.message || '');
         if (status === 'SUBSCRIBED') { await channel.track({ ...me.public(), online_at: me.joinedAt }); onStatus({ online: true, room: n, count: 1 }); }
-        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') onStatus({ online: false, room: n });
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') onStatus({ online: false, room: n, error: `${status}${err?.message ? ' · ' + err.message : ''}` });
       });
   }
   join(1);

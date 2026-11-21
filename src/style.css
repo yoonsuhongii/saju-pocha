@@ -245,3 +245,14 @@ a.primary { text-decoration: none; display: inline-block; }
 .note .reacts button { background: rgba(255, 255, 255, 0.7); border-radius: 999px; padding: 6px 10px; font-size: 13px; color: #2a2233; }
 .note .reacts button.done { background: #2a2233; color: #fff; }
 .note .report { background: none; color: #888; font-size: 11px; margin-left: auto; }
+
+.wall-grid { flex: 1 1 auto; min-height: 160px; grid-auto-rows: max-content; align-content: start; }
+.note { min-height: 120px; }
+.wall-detail { position: relative; color: #2a2233; border-radius: 10px; padding: 16px 16px 14px; font-size: 16px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); flex: none; }
+.wall-detail .close-note { position: absolute; top: 8px; right: 10px; background: rgba(0, 0, 0, 0.08); border-radius: 999px; width: 28px; height: 28px; color: #2a2233; }
+.wall-detail .reply { margin-top: 10px; padding: 9px 12px; background: rgba(255, 255, 255, 0.6); border-radius: 12px; font-size: 14px; }
+.wall-detail .reacts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.wall-detail .reacts button { background: rgba(255, 255, 255, 0.75); border-radius: 999px; padding: 7px 12px; font-size: 13px; color: #2a2233; }
+.wall-detail .reacts button.done { background: #2a2233; color: #fff; }
+.wall-detail .report { background: none !important; color: #777 !important; font-size: 12px; margin-left: auto; }
+.note.sel { outline: 3px solid rgba(255, 255, 255, 0.85); }
