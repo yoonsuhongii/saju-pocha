@@ -1,7 +1,7 @@
 // 사주 기반 고민 상담: 상담사 페르소나 + 상세 명식 + 오늘 일진 + 대화 기록 → 답변
 import { chat, rateLimited, readBody } from './_shared.js';
 
-const SYSTEM = (p) => `너는 2030년 강변 "사주포차 거리"의 포장마차 사장님이자 사주 상담사 "${p.name}"이다.
+const SYSTEM = (p) => `너는 2030년 혜화역 대학로 마로니에공원 앞 "사주포차 거리"의 포장마차 사장님이자 사주 상담사 "${p.name}"이다.
 
 [캐릭터 — 절대 깨지 말 것]
 - 말투: ${p.speech}
@@ -9,7 +9,7 @@ const SYSTEM = (p) => `너는 2030년 강변 "사주포차 거리"의 포장마�
 - 사연: ${p.backstory || '이 골목에서 오래 장사하며 손님들 고민을 들어온 사람'}
 - 말투 예시: ${p.sample || p.greeting || ''}
 모든 문장을 이 말투로 쓴다. 사투리·어미·호칭·입버릇을 매번 확실히 살리고, 표준어 상담 문체("~해보시는 건 어떨까요")로 돌아가지 않는다.
-포차 사장님답게 가끔 국자로 어묵 국물 뜨기, 잔 채워주기 같은 행동을 *별표* 없이 짧은 지문처럼 문장에 녹인다(예: "국물 한 국자 더 떠줄게.").
+포차 사장님답게 손님 테이블에 놓인 술·안주를 가끔 언급하고(예: "소주 한 잔 비우고 들어봐."), 국자로 어묵 국물 뜨기, 잔 채워주기 같은 행동을 *별표* 없이 짧은 지문처럼 문장에 녹인다(예: "국물 한 국자 더 떠줄게.").
 
 [사주 해석 — 깊고 구체적으로]
 - 손님 명식(네 기둥, 각 글자의 오행·십성, 신강약, 태어난 계절, 많은/없는 기운, 올해 세운, 오늘 일진)을 받는다.
@@ -34,13 +34,13 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   if (rateLimited(req, 30)) return res.status(429).json({ error: 'too many requests' });
   try {
-    const { persona = {}, saju = {}, fortune = {}, history = [], message = '' } = readBody(req);
+    const { persona = {}, saju = {}, fortune = {}, history = [], message = '', table = '' } = readBody(req);
     const s = (v, n) => String(v || '').slice(0, n);
     const p = {
       name: s(persona.name || '포차 이모', 20), speech: s(persona.speech || '다정한 반말', 160),
       catchphrases: s(persona.catchphrases, 120), backstory: s(persona.backstory, 160), sample: s(persona.sample, 200), greeting: s(persona.greeting, 120),
     };
-    const ctx = `[손님 명식]\n${JSON.stringify(saju).slice(0, 2200)}\n[오늘 일진]\n${JSON.stringify(fortune).slice(0, 300)}`;
+    const ctx = `[손님 명식]\n${JSON.stringify(saju).slice(0, 2200)}\n[오늘 일진]\n${JSON.stringify(fortune).slice(0, 300)}\n[손님 테이블에 나온 것] ${s(table, 120)}`;
     const msgs = [{ role: 'system', content: SYSTEM(p) }, { role: 'system', content: ctx }];
     (Array.isArray(history) ? history.slice(-12) : []).forEach((m) => msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: s(m.content, 800) }));
     msgs.push({ role: 'user', content: s(message, 600) });

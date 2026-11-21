@@ -83,7 +83,7 @@ const ADVICE = {
   etc: (s) => `${EL_TRAIT[s.dominant]}이 센 사람은 생각이 한쪽으로 몰리기 쉬워. 지금 고민을 종이에 한 줄로 줄여보면, 의외로 답이 보일 거야.`,
 };
 
-function styleize(text, persona) {
+export function styleize(text, persona) {
   const sp = persona.speech || '';
   if (/냥/.test(sp)) return text.replace(/([가-힣])([.!?])/g, '$1냥$2');
   if (/부산|경상/.test(sp)) return `마, ${text.replace(/거야\./g, '기다.').replace(/해\./g, '해라.')} 됐다 고마, 묵고 가라.`;
@@ -125,4 +125,32 @@ export function stallDefault(i) {
   const k = STALL_KEYS[i % STALL_KEYS.length];
   const p = k ? PRESETS.find((x) => x.k.includes(k)).p : DEFAULT_PERSONA;
   return JSON.parse(JSON.stringify(p));
+}
+
+// ---------------- 옆자리 손님 ----------------
+const NB = [
+  { k: ['안녕', '하이', '반가'], r: ['어 안녕하세요! 여기 처음 오셨어요?', '반가워요~ 여기 어묵 국물 진짜 맛있어요.'] },
+  { k: ['뭐 마', '술', '소주', '막걸리', '맥주'], r: ['저는 오늘 소주요. 하루가 좀 길었거든요.', '막걸리 마셔봐요, 비 오는 날엔 막걸리지.'] },
+  { k: ['붕어빵', '팥', '슈크림'], r: ['붕어빵은 무조건 팥이죠. 슈붕파세요?', '저기 혜화역 쪽 붕어빵집 진짜 맛있어요.'] },
+  { k: ['연극', '공연', '버스킹'], r: ['아까 마로니에 버스킹 봤어요? 노래 좋던데.', '저 방금 소극장에서 연극 보고 나왔어요!'] },
+  { k: ['사주', '운세', '상담'], r: ['여기 사장님 사주 잘 봐요. 저도 아까 봤는데 소름.', '저 올해 운 별로라는데 그냥 술이나 마시려고요 ㅎㅎ'] },
+  { k: ['힘들', '지쳐', '우울', '피곤'], r: ['에고… 오늘 많이 힘드셨구나. 사장님한테 얘기 한번 해봐요, 은근 위로돼요.', '저도요. 그래도 여기 앉아 있으니까 좀 낫네요.'] },
+];
+export function offlineNeighbor(message) {
+  const m = String(message);
+  const hit = NB.find((x) => x.k.some((k) => m.includes(k)));
+  const pool = hit ? hit.r : ['하하 그러게요. 여기 분위기 좋죠?', '오 진짜요? 더 얘기해줘요.', '그쵸, 이런 날엔 포차가 최고예요.'];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+export async function neighbor(args) {
+  try { const r = await post('/api/neighbor', args, 20000); if (!r.text) throw new Error('empty'); return r.text; }
+  catch { return offlineNeighbor(args.message); }
+}
+
+// 금칙어 가리기 (간단)
+const BAD = ['시발', '씨발', 'ㅅㅂ', '병신', 'ㅂㅅ', '좆', '개새', '닥쳐', '꺼져', '미친놈', '미친년', '애미', '느금'];
+export function cleanChat(t) {
+  let s = String(t).replace(/\s+/g, ' ').trim().slice(0, 80);
+  BAD.forEach((w) => { s = s.split(w).join('♡'.repeat(w.length)); });
+  return s;
 }

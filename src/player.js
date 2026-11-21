@@ -1,7 +1,22 @@
 // 내 캐릭터: 3인칭 이동 + 포차 의자에 앉기 + 입력(키보드/마우스/터치 조이스틱)
 import * as THREE from 'three';
-import { makeCharacter, animateCharacter, nameSprite } from './character.js';
-import { WALK } from './scene.js';
+import { makeCharacter, animateCharacter, nameSprite, bubbleSprite } from './character.js';
+import { WALK, itemMesh } from './scene.js';
+
+// 말풍선·손에 든 물건 공용 기능
+function say(self, text, now, dur = 6000) {
+  if (self.bubble) self.group.remove(self.bubble);
+  self.bubble = bubbleSprite(text); self.bubble.position.y = 2.15; self.group.add(self.bubble);
+  self.bubbleUntil = now + dur;
+}
+function tickBubble(self, now) { if (self.bubble && now > self.bubbleUntil) { self.group.remove(self.bubble); self.bubble = null; } }
+function setCarry(self, id) {
+  if (self.carryId === id) return; self.carryId = id;
+  if (self.carry) { self.carry.parent?.remove(self.carry); self.carry = null; }
+  if (!id || !self.body) return;
+  self.carry = itemMesh(id); self.carry.scale.setScalar(1.3); self.carry.position.set(0, -0.36, 0.08);
+  self.body.userData.parts.arms[1].add(self.carry);
+}
 
 const wrap = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
@@ -33,7 +48,11 @@ export class Player {
     if (this.tag) this.group.remove(this.tag);
     this.tag = nameSprite(this.name, { bg: 'rgba(255,190,60,0.85)', fg: '#2a1800', scale: 0.9 });
     this.tag.position.y = 1.95; this.group.add(this.tag);
+    const c = this.carryId; this.carryId = undefined; if (c) setCarry(this, c);
   }
+
+  say(text, now) { say(this, text, now); }
+  setCarry(id) { setCarry(this, id); }
 
   sitAt(seat) {
     this.seat = seat;
@@ -70,6 +89,9 @@ export class Player {
     this.marker.position.set(this.pos.x, 2.25 + Math.sin(now / 250) * 0.05, this.pos.z);
     this.marker.visible = !this.seat;
     this.tag.visible = !this.seat;
+    tickBubble(this, now);
+    if (this.bubble) this.bubble.visible = !this.seat;
+    if (this.carry) this.carry.visible = !this.seat;
 
     // 카메라: 앉으면 포차 안쪽을 보는 어깨너머 시점
     if (this.seat && !this.freeLook) {
@@ -84,7 +106,7 @@ export class Player {
     const off = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(this.dist);
     const cam = target.clone().add(off);
     cam.y = Math.max(cam.y, 0.5);
-    cam.z = Math.min(cam.z, 11.2);
+    cam.z = Math.min(cam.z, 11.7);
     if (cam.z < -5.6) cam.z = -5.6;
     camera.position.lerp(cam, Math.min(1, dt * 7));
     camera.lookAt(target);
@@ -109,8 +131,12 @@ export class Avatar {
     this.body = makeCharacter(look); this.group.add(this.body);
     this.tag = nameSprite(name, { bg: bot ? 'rgba(40,40,60,0.6)' : 'rgba(20,16,40,0.78)', scale: 0.8 });
     this.tag.position.y = 1.9; this.group.add(this.tag);
+    const c = this.carryId; this.carryId = undefined; if (c) setCarry(this, c);
   }
+  say(text, now) { say(this, text, now); }
   update(dt, st, now, camPos) {
+    tickBubble(this, now);
+    setCarry(this, st.seated ? null : st.carry || null);
     if (camPos) { const d = camPos.distanceTo(this.group.position); this.tag.material.opacity = THREE.MathUtils.clamp(d < 4.6 ? 0 : 1 - (d - 10) / 8, 0, 1); }
     // st: { x, z, seated, wave, facing }
     this.target.set(st.x, 0, st.z);

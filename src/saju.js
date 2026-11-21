@@ -8,7 +8,7 @@ export const BRANCHES_H = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未
 export const ANIMALS = ['쥐', '소', '호랑이', '토끼', '용', '뱀', '말', '양', '원숭이', '닭', '개', '돼지'];
 
 export const ELEMENTS = {
-  wood: { ko: '목', h: '木', name: '나무', color: '#3ddc84', weather: '봄비 내리는 초록 밤' },
+  wood: { ko: '목', h: '木', name: '나무', color: '#3ddc84', weather: '마로니에 잎 흩날리는 밤' },
   fire: { ko: '화', h: '火', name: '불', color: '#ff5d3a', weather: '등불이 타오르는 따뜻한 밤' },
   earth: { ko: '토', h: '土', name: '흙', color: '#e0a65a', weather: '노을빛 안개 낀 밤' },
   metal: { ko: '금', h: '金', name: '쇠', color: '#e8eef7', weather: '첫눈과 달빛' },

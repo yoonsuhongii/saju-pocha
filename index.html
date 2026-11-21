@@ -14,7 +14,7 @@
     <div class="card intro">
       <div class="kicker">2030 월드모델 · 파일럿</div>
       <h1>🏮 사주포차 거리</h1>
-      <p class="lead">비 오는 강변, 포장마차 불빛 아래.<br />내 사주를 아는 사장님에게 오늘의 고민을 털어놔요.</p>
+      <p class="lead">혜화역 2번 출구, 마로니에공원 앞 포장마차 거리.<br />내 사주를 아는 사장님에게 오늘의 고민을 털어놔요.</p>
       <div class="me-preview">
         <div><span class="muted">오늘 밤 내 이름</span><b id="my-name">-</b></div>
         <button id="reroll" class="ghost small">🎲 다시</button>
@@ -40,6 +40,7 @@
   </div>
   <div id="topright" class="hidden">
     <button id="btn-sound" class="round" title="소리">🔊</button>
+    <button id="btn-chat" class="round" title="말하기">💬</button>
     <button id="btn-card" class="round" title="내 사주">📜</button>
   </div>
   <div id="hint" class="hint hidden">드래그로 둘러보기 · WASD/조이스틱으로 걷기 · 빈 의자에 가까이 가면 앉을 수 있어요</div>
@@ -59,21 +60,65 @@
         <button id="btn-stand" class="ghost small">일어나기</button>
       </div>
     </header>
-    <div id="log" class="log"></div>
-    <div class="chips" id="chips"></div>
-    <form id="ask" class="ask">
-      <input id="q" maxlength="300" placeholder="요즘 고민을 적어보세요" autocomplete="off" />
-      <button class="primary small">보내기</button>
-    </form>
-    <details class="restyle">
-      <summary>✨ 상담사 스타일 바꾸기 <span class="muted tiny">(거리의 모두에게 보여요)</span></summary>
-      <form id="style-form" class="ask">
-        <input id="style-q" maxlength="80" placeholder="예: 부산 사투리 무뚝뚝한 아재" autocomplete="off" />
-        <button class="small">변신</button>
+    <nav class="tabs">
+      <button data-tab="counsel" class="on">🔮 상담</button>
+      <button data-tab="menu">🍢 주문</button>
+      <button data-tab="chat">💬 옆자리 <span id="chat-dot" class="dot hidden"></span></button>
+    </nav>
+    <section id="tab-counsel" class="tab">
+      <div id="log" class="log"></div>
+      <div class="chips" id="chips"></div>
+      <form id="ask" class="ask">
+        <input id="q" maxlength="300" placeholder="요즘 고민을 적어보세요" autocomplete="off" />
+        <button class="primary small">보내기</button>
       </form>
-      <div class="chips" id="style-chips"></div>
-    </details>
+      <details class="restyle">
+        <summary>✨ 상담사 스타일 바꾸기 <span class="muted tiny">(거리의 모두에게 보여요)</span></summary>
+        <form id="style-form" class="ask">
+          <input id="style-q" maxlength="80" placeholder="예: 부산 사투리 무뚝뚝한 아재" autocomplete="off" />
+          <button class="small">변신</button>
+        </form>
+        <div class="chips" id="style-chips"></div>
+      </details>
+    </section>
+    <section id="tab-menu" class="tab hidden">
+      <div class="menu-scroll">
+        <div class="menu-h">🍶 마실 것</div>
+        <div class="menu-grid" id="menu-drinks"></div>
+        <div class="menu-h">🍢 안주 <span class="muted tiny">⭐ = 내 사주에 부족한 기운을 채워주는 안주</span></div>
+        <div class="menu-grid" id="menu-food"></div>
+        <div class="menu-h">🧾 내 테이블 <span id="bill" class="muted tiny"></span></div>
+        <div id="my-table" class="my-table muted tiny">아직 주문한 게 없어요</div>
+      </div>
+    </section>
+    <section id="tab-chat" class="tab hidden">
+      <div id="chatlog" class="log"><div class="msg sys">같은 포차·근처 손님에게만 말풍선으로 보여요. AI 손님도 대답해요.</div></div>
+      <form id="chat-form" class="ask">
+        <input id="chat-q" maxlength="80" placeholder="옆자리에 말 걸기" autocomplete="off" />
+        <button class="primary small">말하기</button>
+      </form>
+    </section>
   </aside>
+
+  <!-- 걸어다닐 때 말하기 -->
+  <form id="chatbar" class="chatbar hidden">
+    <input id="chatbar-q" maxlength="80" placeholder="근처 사람에게 말하기 (말풍선)" autocomplete="off" />
+    <button class="primary small">말하기</button>
+  </form>
+  <button id="btn-bungeo" class="action alt hidden">🐟 붕어빵 사기</button>
+  <section id="bungeo-menu" class="overlay hidden">
+    <div class="card bungeo-card">
+      <div class="kicker">혜화역 2번 출구 앞 · 붕어빵</div>
+      <h2>뭐로 드릴까요?</h2>
+      <p class="muted tiny" id="bungeo-tally">오늘 거리 투표: 팥붕 0 : 슈붕 0 : 피자붕 0</p>
+      <div class="row wrap">
+        <button class="ghost" data-flavor="pat">팥 붕어빵</button>
+        <button class="ghost" data-flavor="shu">슈크림 붕어빵</button>
+        <button class="ghost" data-flavor="pizza">피자 붕어빵</button>
+      </div>
+      <button id="bungeo-close" class="ghost small">그냥 갈게요</button>
+    </div>
+  </section>
 
   <!-- 사주 카드 -->
   <section id="cardview" class="overlay hidden">

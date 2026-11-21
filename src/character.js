@@ -129,3 +129,31 @@ export function randomLook(r = Math.random) {
   };
 }
 export const randomName = (r = Math.random) => `${pick(ADJ, r)} ${pick(ANIMAL, r)}`;
+
+// ---------------- 말풍선 ----------------
+export function bubbleSprite(text, { bg = 'rgba(246,240,228,0.92)', fg = '#1d1a24' } = {}) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 200;
+  const g = c.getContext('2d');
+  const font = '600 34px "Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif';
+  g.font = font;
+  // 줄바꿈 (최대 3줄)
+  const lines = []; let line = '';
+  for (const ch of String(text)) {
+    if (g.measureText(line + ch).width > 440) { lines.push(line); line = ch; if (lines.length === 3) break; } else line += ch;
+  }
+  if (lines.length < 3 && line) lines.push(line);
+  if (lines.length === 3 && text.length > lines.join('').length) lines[2] = lines[2].slice(0, -1) + '…';
+  const w = Math.min(500, Math.max(...lines.map((l) => g.measureText(l).width)) + 48), h = lines.length * 44 + 32;
+  const x0 = (512 - w) / 2, y0 = 200 - h - 22;
+  g.fillStyle = bg;
+  g.beginPath(); g.roundRect ? g.roundRect(x0, y0, w, h, 26) : g.rect(x0, y0, w, h); g.fill();
+  g.beginPath(); g.moveTo(246, y0 + h); g.lineTo(266, y0 + h); g.lineTo(256, 196); g.fill();
+  g.fillStyle = fg; g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, 256, y0 + 38 + i * 44));
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, color: 0xbdb6aa }));
+  s.scale.set(1.8, 0.7, 1); s.renderOrder = 11;
+  s.center.set(0.5, 0);
+  return s;
+}
