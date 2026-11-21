@@ -37,9 +37,11 @@
   <div id="hud" class="hidden">
     <div id="status" class="pill">오프라인 미리보기</div>
     <div id="weather" class="pill weather">-</div>
+    <div id="theme-pill" class="pill theme hidden"></div>
   </div>
   <div id="topright" class="hidden">
     <button id="btn-sound" class="round" title="소리">🔊</button>
+    <button id="btn-theme" class="round" title="거리 바꾸기">✨</button>
     <button id="btn-chat" class="round" title="말하기">💬</button>
     <button id="btn-card" class="round" title="내 사주">📜</button>
   </div>
@@ -60,6 +62,8 @@
         <button id="btn-stand" class="ghost small">일어나기</button>
       </div>
     </header>
+    <div id="cheers-pick" class="cheers-pick hidden"></div>
+    <div id="kitchen" class="kitchen hidden"></div>
     <nav class="tabs">
       <button data-tab="counsel" class="on">🔮 상담</button>
       <button data-tab="menu">🍢 주문</button>
@@ -105,7 +109,47 @@
     <input id="chatbar-q" maxlength="80" placeholder="근처 사람에게 말하기 (말풍선)" autocomplete="off" />
     <button class="primary small">말하기</button>
   </form>
-  <button id="btn-bungeo" class="action alt hidden">🐟 붕어빵 사기</button>
+  <div id="ctx" class="ctx">
+    <button id="btn-bungeo" class="act hidden">🐟 붕어빵 사기</button>
+    <button id="btn-ticket" class="act hidden">🎭 즉석 연극 보기</button>
+    <button id="btn-clap" class="act hidden">👏 박수</button>
+    <button id="btn-request" class="act hidden">🎸 신청곡</button>
+    <button id="btn-goplay" class="act hidden">🎭 연극 보러 가기</button>
+  </div>
+  <div id="subtitle" class="subtitle hidden"></div>
+
+  <section id="theme-modal" class="overlay hidden">
+    <div class="card modal-card">
+      <div class="kicker">월드 프롬프트 · 모두에게 3분간 보여요</div>
+      <h2>✨ 거리를 어떻게 바꿀까요?</h2>
+      <form id="theme-form" class="ask flat">
+        <input id="theme-q" maxlength="60" placeholder="예: 첫눈 오는 크리스마스 이브" autocomplete="off" />
+        <button class="primary small">바꾸기</button>
+      </form>
+      <div class="chips flat" id="theme-chips"></div>
+      <button class="ghost small close-modal">닫기</button>
+    </div>
+  </section>
+  <section id="play-modal" class="overlay hidden">
+    <div class="card modal-card">
+      <div class="kicker">소극장 호객 알바 · 즉석 연극</div>
+      <h2>🎭 오늘 밤 무슨 연극 볼래요?</h2>
+      <p class="muted tiny">주제를 주면 AI 작가가 1분짜리 대본을 쓰고, 마로니에 야외무대에서 바로 올려요. 거리의 모두가 같이 봐요.</p>
+      <form id="play-form" class="ask flat">
+        <input id="play-q" maxlength="60" placeholder="예: 막차 놓친 취준생의 하루 (비워도 돼요)" autocomplete="off" />
+        <button class="primary small">공연 시작</button>
+      </form>
+      <button class="ghost small close-modal">다음에요</button>
+    </div>
+  </section>
+  <section id="song-modal" class="overlay hidden">
+    <div class="card modal-card">
+      <div class="kicker">마로니에 야외무대 · 버스킹</div>
+      <h2>🎸 신청곡</h2>
+      <div class="col" id="song-list"></div>
+      <button class="ghost small close-modal">닫기</button>
+    </div>
+  </section>
   <section id="bungeo-menu" class="overlay hidden">
     <div class="card bungeo-card">
       <div class="kicker">혜화역 2번 출구 앞 · 붕어빵</div>

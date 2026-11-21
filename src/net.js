@@ -9,10 +9,10 @@ const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const CAPACITY = 24;
 export const ONLINE_CAPABLE = !!(URL && KEY);
 
-export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBungeo }) {
+export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBungeo, onTheme, onPlay, onBusk, onClap }) {
   const peers = new Map();
   let channel = null, alive = true, lastTrack = 0, pending = null, roomNo = 1;
-  if (!ONLINE_CAPABLE) { onStatus({ online: false, room: 0 }); return { peers, update() {}, move() {}, stall() {}, cheers() {}, say() {}, bungeo() {}, close() {}, room: () => 0 }; }
+  if (!ONLINE_CAPABLE) { onStatus({ online: false, room: 0 }); return { peers, update() {}, move() {}, stall() {}, cheers() {}, say() {}, bungeo() {}, theme() {}, play() {}, busk() {}, clap() {}, close() {}, room: () => 0 }; }
   const client = createClient(URL, KEY, { realtime: { params: { eventsPerSecond: 20 } } });
 
   function join(n) {
@@ -39,6 +39,7 @@ export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBun
           peers.set(id, { ...s, x: prev && !s.seat ? prev.x : s.x, z: prev && !s.seat ? prev.z : s.z });
           // 포차 스타일은 presence 로도 동기화 (늦게 온 사람도 보이게)
           if (s.stallStyle) onStall?.(s.stallStyle, id);
+          if (s.theme) onTheme?.(s.theme, id);
         });
         [...peers.keys()].forEach((id) => { if (!seen.has(id)) peers.delete(id); });
         onStatus({ online: true, room: n, count: ids.length });
@@ -52,6 +53,10 @@ export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBun
       .on('broadcast', { event: 'cheers' }, ({ payload }) => onCheers?.(payload))
       .on('broadcast', { event: 'say' }, ({ payload }) => onSay?.(payload))
       .on('broadcast', { event: 'bungeo' }, ({ payload }) => onBungeo?.(payload))
+      .on('broadcast', { event: 'theme' }, ({ payload }) => onTheme?.(payload, payload.by))
+      .on('broadcast', { event: 'play' }, ({ payload }) => onPlay?.(payload))
+      .on('broadcast', { event: 'busk' }, ({ payload }) => onBusk?.(payload))
+      .on('broadcast', { event: 'clap' }, ({ payload }) => onClap?.(payload))
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') { await channel.track({ ...me.public(), online_at: me.joinedAt }); onStatus({ online: true, room: n, count: 1 }); }
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') onStatus({ online: false, room: n });
@@ -70,8 +75,12 @@ export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBun
     move(x, z) { channel?.send({ type: 'broadcast', event: 'pos', payload: { id: me.id, x: +x.toFixed(2), z: +z.toFixed(2) } }); },
     stall(style) { channel?.send({ type: 'broadcast', event: 'stall', payload: { ...style, by: me.id } }); },
     say(text, stall) { channel?.send({ type: 'broadcast', event: 'say', payload: { id: me.id, text, stall } }); },
+    theme(t) { channel?.send({ type: 'broadcast', event: 'theme', payload: t }); },
+    play(p) { channel?.send({ type: 'broadcast', event: 'play', payload: p }); },
+    busk(b) { channel?.send({ type: 'broadcast', event: 'busk', payload: b }); },
+    clap() { channel?.send({ type: 'broadcast', event: 'clap', payload: { id: me.id } }); },
     bungeo(flavor) { channel?.send({ type: 'broadcast', event: 'bungeo', payload: { id: me.id, flavor } }); },
-    cheers(stall) { channel?.send({ type: 'broadcast', event: 'cheers', payload: { id: me.id, stall } }); },
+    cheers(stall, to) { channel?.send({ type: 'broadcast', event: 'cheers', payload: { id: me.id, stall, to } }); },
     close() { alive = false; channel?.unsubscribe(); },
   };
 }

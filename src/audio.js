@@ -34,3 +34,23 @@ export function clink() {
   });
 }
 export function toggleSound() { on = !on; if (master) master.gain.setTargetAtTime(on ? 0.8 : 0, ac.currentTime, 0.1); return on; }
+
+export function audioCtx() { return ac && on ? { ac, master } : null; }
+// 박수 (짧은 잡음 여러 번)
+export function clap(vol = 1) {
+  if (!ac || !on) return;
+  const t0 = ac.currentTime;
+  for (let i = 0; i < 6; i++) {
+    const src = ac.createBufferSource(); src.buffer = noiseBuf(0.05, false);
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1200 + Math.random() * 800;
+    const g = ac.createGain(); const t = t0 + i * 0.11 + Math.random() * 0.03;
+    g.gain.setValueAtTime(0.25 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    src.connect(bp).connect(g).connect(master); src.start(t);
+  }
+}
+// 경적
+export function honk() {
+  if (!ac || !on) return;
+  const t = ac.currentTime;
+  [440, 554].forEach((f) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = f; g.gain.setValueAtTime(0.04, t); g.gain.setValueAtTime(0.04, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35); o.connect(g).connect(master); o.start(t); o.stop(t + 0.4); });
+}

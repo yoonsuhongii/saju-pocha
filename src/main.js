@@ -5,13 +5,15 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { buildScene, updateWeather, drawStallSign, setStallColor, itemMesh, MENU, MENU_BY_ID, SNACK_BY_EL, BUNGEO_POS, STALL_COUNT, STALL_X, SEAT_OFFSETS, SEAT_Z, COUNTER_Z } from './scene.js';
+import { buildStreet, PLAY_PRESETS } from './street.js';
+import { tickMusic, SONGS } from './music.js';
+import { buildScene, updateWeather, themeWeather, STAGE, drawStallSign, setStallColor, itemMesh, MENU, MENU_BY_ID, SNACK_BY_EL, BUNGEO_POS, STALL_COUNT, STALL_X, SEAT_OFFSETS, SEAT_Z, COUNTER_Z } from './scene.js';
 import { makeCharacter, animateCharacter, nameSprite, bubbleSprite, randomLook, randomName } from './character.js';
 import { Player, Avatar, createInput } from './player.js';
 import { connect, botGuests, botChatter, mixWeather, ONLINE_CAPABLE } from './net.js';
 import { calcSaju, todayFortune, snackFor, sajuSummary, sajuDetail, ELEMENTS, relation } from './saju.js';
-import { makePersona, counsel, stallDefault, neighbor, cleanChat, styleize } from './ai.js';
-import { startAudio, setRain, clink, toggleSound } from './audio.js';
+import { makePersona, counsel, stallDefault, neighbor, cleanChat, styleize, makePlay, makeTheme } from './ai.js';
+import { startAudio, setRain, clink, toggleSound, clap, honk } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -41,7 +43,7 @@ addEventListener('resize', () => {
 });
 
 // ---------------- 포차 사장님(상담사) ----------------
-const stallState = world.stalls.map((s, i) => ({ persona: stallDefault(i), at: 0, by: null, counselor: null, tag: null, history: [], greeted: false }));
+const stallState = world.stalls.map((s, i) => ({ idx: i, persona: stallDefault(i), at: 0, by: null, counselor: null, tag: null, history: [], greeted: false }));
 function applyStall(i, persona, { at = 0, by = null } = {}) {
   const st = stallState[i], s = world.stalls[i];
   st.persona = persona; st.at = at; st.by = by;
@@ -49,7 +51,7 @@ function applyStall(i, persona, { at = 0, by = null } = {}) {
   setStallColor(s, persona.tarp || '#ff7a1a');
   if (st.counselor) scene.remove(st.counselor);
   const c = makeCharacter(persona.look);
-  c.position.set(s.x + 0.6, 0, -2.55);
+  c.position.copy(st.counselor ? st.counselor.position : new THREE.Vector3(s.x + 0.6, 0, -2.55));
   scene.add(c); st.counselor = c;
   const tag = nameSprite(`${persona.name} · 상담사`, { bg: 'rgba(120,40,0,0.75)', scale: 0.85 });
   tag.position.y = 2.05; c.add(tag); st.tag = tag;
@@ -90,7 +92,7 @@ const me = {
   name: randomName(), look: randomLook(), saju: null, el: null, seatKey: null, wave: 0, stallStyle: null, orders: [], carry: null,
   public() {
     const p = player ? player.pos : { x: 0, z: 5 };
-    return { id: this.id, name: this.name, look: this.look, el: this.el, seat: this.seatKey, x: +p.x.toFixed(2), z: +p.z.toFixed(2), wave: this.wave > Date.now() ? this.wave : 0, stallStyle: this.stallStyle, orders: this.orders.slice(-6), carry: this.carry };
+    return { id: this.id, name: this.name, look: this.look, el: this.el, seat: this.seatKey, x: +p.x.toFixed(2), z: +p.z.toFixed(2), wave: this.wave > Date.now() ? this.wave : 0, stallStyle: this.stallStyle, orders: this.orders.slice(-6), carry: this.carry, theme: this.theme && this.theme.until > Date.now() ? this.theme : null };
   },
 };
 let player = null, input = null, net = null, entered = false;
@@ -134,8 +136,10 @@ function enter() {
     },
     onCheers: (p) => {
       const peer = net.peers.get(p.id);
-      if (peer) peer.waveUntil = performance.now() + 2500;
-      if (me.seatKey && Number(me.seatKey.split('-')[0]) === p.stall) { clink(); toast(`🍶 ${peer?.name || '옆자리 손님'}님이 건배를 건넸어요`); }
+      const a = participant('avatar', p.id);
+      const b = p.to === 'counselor' ? participant('counselor', p.stall) : p.to === me.id ? participant('me') : participant('avatar', p.to);
+      startToast(a, b);
+      if (p.to === me.id) toast(`🍶 ${peer?.name || '옆자리 손님'}님이 나에게 건배했어요!`);
     },
     onSay: (p) => {
       const av = avatars.get(p.id), peer = net.peers.get(p.id);
@@ -144,6 +148,10 @@ function enter() {
       const near = av && player && av.group.position.distanceTo(player.pos) < 12;
       if (near || (me.seatKey && p.stall === mySeatStall())) addChat(peer?.name || '손님', text, 'other');
     },
+    onTheme: (t, by) => { if (t && t.at) applyTheme({ ...t, by }); },
+    onPlay: (p) => startPlay(p),
+    onBusk: (r) => { buskReq = r; toast(`🎸 ${r.by || '누군가'}님의 신청곡이 흘러나와요`); },
+    onClap: (p) => { const av = avatars.get(p.id); if (av) { const peer = net.peers.get(p.id); if (peer) peer.waveUntil = performance.now() + 1500; } if (player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 20) clap(0.6); },
     onBungeo: (p) => {
       bungeoTally[p.flavor] = (bungeoTally[p.flavor] || 0) + 1;
       const who = net.peers.get(p.id)?.name || '누군가';
@@ -152,7 +160,7 @@ function enter() {
   });
   buildBungeoOwner();
   setTimeout(() => $('hint').style.opacity = '0', 9000);
-  if (me.saju) setTimeout(() => toast(`오늘 밤 당신의 기운은 ${ELEMENTS[me.saju.dominant].h}(${ELEMENTS[me.saju.dominant].name}) — 거리 날씨가 조금 바뀌어요`), 1200);
+  if (me.saju) setTimeout(() => toast(`오늘 밤 당신은 ${ELEMENTS[me.saju.dominant].name} 기운이 가장 강해요 — 거리 날씨가 조금 바뀌어요`), 1200);
 }
 
 // ---------------- 좌석 ----------------
@@ -226,7 +234,7 @@ function openPanel(i) {
     if (me.saju) {
       const s = me.saju, sm = sajuSummary(s), f = todayFortune(s);
       const box = `<div class="mini-pillars">${[s.pillars.year, s.pillars.month, s.pillars.day, s.pillars.hour].map((p) => (p ? p.h : '??')).join(' · ')}</div>`;
-      addMsg(`📜 손님 사주를 펼쳐봤어요<br>일간 ${sm.dayMaster} · ${ELEMENTS[s.dominant].h} 기운이 가장 많고 ${ELEMENTS[s.weak].h} 기운이 약해요.<br>오늘은 「${f.rel}」의 날 — ${f.tone}${box}`, 'sys', true);
+      addMsg(`📜 손님 사주를 펼쳐봤어요<br>나를 뜻하는 글자는 <b>${s.dayMaster.stem}</b> — ${s.dayMaster.desc}<br>${ELEMENTS[s.dominant].name} 기운이 가장 많고, ${ELEMENTS[s.weak].name} 기운이 약해요.<br>오늘은 ${f.relPlain} — ${f.tone}`, 'sys', true);
     } else addMsg('사주 없이 앉았어요. 입장 화면에서 생년월일을 넣으면 사주 상담을 받을 수 있어요.', 'sys');
   }
   renderChips();
@@ -247,19 +255,25 @@ async function ask(text) {
   busy = true;
   const i = curStall, st = stallState[i];
   addMsg(text, 'me');
-  const typing = addMsg('…', 'bot typing');
+  const typing = addMsg('<span class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="think-txt">사주를 펼쳐보는 중</span></span>', 'bot typing', true);
+  const THINK = me.saju ? ['사주를 펼쳐보는 중', '태어난 날 글자를 짚어보는 중', '음… 뭐라고 말해줄까', '국물 한번 휘젓는 중', '오늘 운이랑 맞춰보는 중'] : ['음… 생각하는 중', '고민을 곱씹는 중', '국물 한번 휘젓는 중'];
+  let ti = 0;
+  const thinkTimer = setInterval(() => { const el = typing.querySelector('.think-txt'); if (!el) return; el.style.opacity = 0; setTimeout(() => { ti = (ti + 1) % THINK.length; el.textContent = THINK[ti]; el.style.opacity = 1; }, 250); }, 1800);
+  if (st.counselor) bubbleOn(st.counselor, '🤔 …', 30000);
   talking = i;
   const saju = me.saju ? sajuDetail(me.saju) : { note: '사주 정보 없음 — 사주 대신 대화로만 상담' };
   const res = await counsel({
     persona: (({ name, speech, catchphrases, backstory, sample, greeting }) => ({ name, speech, catchphrases, backstory, sample, greeting }))(st.persona), saju,
     table: me.orders.map((id) => MENU_BY_ID[id]?.name || (id === 'bungeo' ? '붕어빵' : id)).join(', ') || '아직 주문 없음',
-    fortune: me.saju ? (({ today, rel, tone }) => ({ 오늘: today.h, 나와의관계: rel, 풀이: tone }))(todayFortune(me.saju)) : {}, history: st.history, message: text,
+    fortune: me.saju ? (({ today, relPlain, tone }) => ({ 오늘: `${today.ko}일`, 나와의관계: relPlain, 풀이: tone }))(todayFortune(me.saju)) : {}, history: st.history, message: text,
   }, me.saju).catch(() => ({ text: '', offline: true }));
   let reply = res.text;
   if (!reply) reply = `${st.persona.greeting || ''} 사주를 몰라도 들어줄 수는 있어요. 오늘은 따뜻한 국물부터 한 그릇 해요.`;
   st.history.push({ role: 'user', content: text });
-  typing.remove();
+  typing.remove(); clearInterval(thinkTimer);
+  if (st.counselor?.userData.bubble) { st.counselor.remove(st.counselor.userData.bubble); st.counselor.userData.bubble = null; }
   talking = -1;
+  if (st.counselor) bubbleOn(st.counselor, reply.split(/(?<=[.!?…])\s/)[0].slice(0, 40), 5000);
   if (curStall === i) say(reply); else st.history.push({ role: 'assistant', content: reply });
   if (me.saju && !st.recommended && !me.orders.includes(SNACK_BY_EL[me.saju.weak])) {
     st.recommended = true;
@@ -287,10 +301,7 @@ async function restyle(prompt) {
   busy = false;
 }
 
-$('btn-cheers').onclick = () => {
-  clink(); me.wave = Date.now() + 2500; player.wave = 2.5;
-  net.cheers(curStall); net.update();
-};
+$('btn-cheers').onclick = () => openCheersPick();
 $('btn-sound').onclick = () => { $('btn-sound').textContent = toggleSound() ? '🔊' : '🔇'; };
 $('btn-card').onclick = () => showCard();
 $('cardview').onclick = (e) => { if (e.target.id === 'cardview') $('cardview').classList.add('hidden'); };
@@ -298,12 +309,12 @@ function showCard() {
   const el = $('saju-card');
   if (!me.saju) { el.innerHTML = '<h2>📜 내 사주</h2><p class="muted">사주 없이 구경 중이에요.<br>새로고침 후 생년월일을 넣어보세요.</p>'; $('cardview').classList.remove('hidden'); return; }
   const s = me.saju, f = todayFortune(s), P = s.pillars;
-  const col = (lab, p) => `<div><div class="lab">${lab}</div><div class="h">${p ? p.h.split('').join('<br>') : '?<br>?'}</div><div class="lab">${p ? p.ko : '모름'}</div></div>`;
+  const col = (lab, p) => `<div><div class="lab">${lab}</div><div class="h">${p ? p.ko.split('').join('<br>') : '?<br>?'}</div><div class="lab">${p ? p.h : '모름'}</div></div>`;
   const max = Math.max(...Object.values(s.count), 1);
-  const bars = Object.keys(s.count).map((k) => `<div class="bar"><span>${ELEMENTS[k].h} ${ELEMENTS[k].name}</span><i style="width:${(s.count[k] / max) * 100}%;background:${ELEMENTS[k].color}"></i><b>${s.count[k]}</b></div>`).join('');
+  const bars = Object.keys(s.count).map((k) => `<div class="bar"><span>${ELEMENTS[k].name}</span><i style="width:${(s.count[k] / max) * 100}%;background:${ELEMENTS[k].color}"></i><b>${s.count[k]}</b></div>`).join('');
   el.innerHTML = `<div class="kicker">오늘 밤의 사주 카드 · ${me.name}</div><div class="pillars">${col('시', P.hour)}${col('일', P.day)}${col('월', P.month)}${col('년', P.year)}</div>
-  <p>나를 뜻하는 글자 <b>${s.dayMaster.h}</b> — ${s.dayMaster.desc}</p><div class="bars">${bars}</div>
-  <p class="muted tiny">${s.animal}띠 · 오늘은 「${f.rel}」의 날 · 추천 안주 ${snackFor(s.weak).name}</p><p class="tiny muted">재미로 보는 사주예요 · 바깥을 누르면 닫혀요</p>`;
+  <p>나를 뜻하는 글자 <b>${s.dayMaster.stem}</b> — ${s.dayMaster.desc}</p><div class="bars">${bars}</div>
+  <p class="muted tiny">${s.animal}띠 · 오늘은 ${f.relPlain} · 추천 안주 ${snackFor(s.weak).name}</p><p class="tiny muted">재미로 보는 사주예요 · 바깥을 누르면 닫혀요</p>`;
   $('cardview').classList.remove('hidden');
 }
 
@@ -356,8 +367,8 @@ function syncAvatars(dt, now, nowSec) {
     if (me.el) els.push(me.el, me.el); // 나의 기운은 조금 더 크게
     const w = mixWeather(els);
     weatherEl = w.el;
-    const counts = Object.entries(w.counts).filter(([, n]) => n).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${ELEMENTS[k].h}${n}`).join(' ');
-    $('weather').textContent = `거리의 기운 ${counts} → ${ELEMENTS[w.el].weather}`;
+    const counts = Object.entries(w.counts).filter(([, n]) => n).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${ELEMENTS[k].name}${n}`).join(' ');
+    $('weather').textContent = theme ? `거리의 기운 ${counts} · 지금은 ✨${theme.title}` : `거리의 기운 ${counts} → ${ELEMENTS[w.el].weather}`;
   }
 }
 
@@ -398,18 +409,12 @@ const ORDER_LINES = {
 function order(id) {
   if (!me.seatKey || curStall < 0) return;
   const m = MENU_BY_ID[id];
-  me.orders.push(id);
-  if (me.orders.length > 6) me.orders.shift();
-  setTable(me.seatKey, me.orders); net.update();
-  const st = stallState[curStall];
-  let line = ORDER_LINES[id] || `${m.name} 나왔어.`;
-  if (me.saju && id === SNACK_BY_EL[me.saju.weak]) line += ` ${ELEMENTS[me.saju.weak].h} 기운 채워주는 거라 딱이야.`;
-  const text = styleize(line, st.persona);
-  st.history.push({ role: 'assistant', content: `(${m.name} 서빙) ${text}` });
-  addMsg(`${m.emoji} ${text}`, 'bot');
-  talking = curStall; setTimeout(() => { talking = -1; }, 1500);
-  toast(`${m.emoji} ${m.name} 주문 완료`);
-  renderMenu();
+  const k = kitchenOf(curStall);
+  if (k.queue.length >= 4) { toast('주문이 밀렸어요, 조금만 기다려요'); return; }
+  k.queue.push({ id, seatKey: me.seatKey });
+  addMsg(`🧾 ${m.name} 주문 들어갔어요 — 사장님이 ${DRINK_IDS.has(id) ? '가지러 가요' : '바로 만들어요'}`, 'sys');
+  setKitchenStatus(`🧾 주문 ${k.queue.length + (k.job ? 1 : 0)}개 준비 중`);
+  toast(`${m.emoji} ${m.name} 주문!`);
 }
 
 // ---------------- 옆사람 대화 ----------------
@@ -481,6 +486,296 @@ function buyBungeo(flavor) {
   toast(`🐟 ${FLAVOR[flavor]} 3개 · 포차에 앉으면 테이블에 올려둬요`);
 }
 
+// ---------------- 사장님 주방: 주문 → 조리 → 서빙 ----------------
+const DRINK_IDS = new Set(MENU.drinks.map((m) => m.id));
+const COOK_SEC = { eomuk: 4.5, tteok: 5, egg: 5, jeon: 5.5, tofu: 4, gizzard: 5, ramen: 5.5 };
+const worldBubbles = [];
+function bubbleOn(obj, text, ms = 4500, y = 2.4) {
+  if (obj.userData.bubble) { obj.remove(obj.userData.bubble); }
+  const b = bubbleSprite(text); b.position.y = y; obj.add(b); obj.userData.bubble = b;
+  worldBubbles.push({ obj, b, until: performance.now() + ms });
+}
+function tickBubbles(now) {
+  for (let i = worldBubbles.length - 1; i >= 0; i--) { const w = worldBubbles[i]; if (now > w.until) { w.obj.remove(w.b); if (w.obj.userData.bubble === w.b) w.obj.userData.bubble = null; worldBubbles.splice(i, 1); } }
+}
+function kitchenOf(i) {
+  const st = stallState[i];
+  if (!st.k) st.k = { queue: [], job: null, step: 'idle', timer: 0, carry: null, phase: 0, puff: 0 };
+  return st.k;
+}
+function homeOf(i) { return new THREE.Vector3(world.stalls[i].x + 0.6, 0, -2.55); }
+function moveCounselor(c, target, dt) {
+  const d = new THREE.Vector3().subVectors(target, c.position); d.y = 0;
+  const L = d.length();
+  if (L < 0.05) { c.position.x = target.x; c.position.z = target.z; return true; }
+  const step = Math.min(L, 1.9 * dt);
+  c.position.addScaledVector(d.normalize(), step);
+  c.rotation.y = Math.atan2(d.x, d.z);
+  return false;
+}
+function updateCounselor(i, dt, now) {
+  const st = stallState[i], c = st.counselor; if (!c) return;
+  const k = kitchenOf(i), s = world.stalls[i];
+  if (st.toasting) return; // 건배 중에는 건배 연출이 제어
+  if (!k.job && k.queue.length) {
+    k.job = k.queue.shift(); k.step = 'go';
+    const drink = DRINK_IDS.has(k.job.id);
+    k.spot = drink ? new THREE.Vector3(s.x + 1.1, 0, -4.45) : new THREE.Vector3(s.x - 1.1, 0, -2.85);
+    if (curStall === i) setKitchenStatus(`${drink ? '🧊' : '🔥'} ${MENU_BY_ID[k.job.id].name} 준비 중…`);
+  }
+  let anim = { talk: talking === i };
+  if (!k.job) {
+    const arrived = moveCounselor(c, homeOf(i), dt);
+    if (arrived) c.rotation.y = Math.sin(now / 3000 + i) * 0.25;
+    anim = { walking: !arrived, phase: (k.phase += dt * 9), talk: talking === i || (arrived && Math.sin(now / 2000 + i) > 0.7) };
+  } else if (k.step === 'go') {
+    if (moveCounselor(c, k.spot, dt)) {
+      const drink = DRINK_IDS.has(k.job.id);
+      k.step = drink ? 'grab' : 'cook'; k.timer = k.resume ?? (drink ? 1.4 : (COOK_SEC[k.job.id] || 4.5)); k.resume = null;
+      c.rotation.y = Math.PI;
+      if (!drink) bubbleOn(c, `🔥 ${MENU_BY_ID[k.job.id].name} 만드는 중…`, k.timer * 1000);
+    }
+    anim = { walking: true, phase: (k.phase += dt * 9) };
+  } else if (k.step === 'cook' || k.step === 'grab') {
+    k.timer -= dt; c.rotation.y = Math.PI;
+    anim = k.step === 'cook' ? { cook: true } : { grab: true };
+    if (k.step === 'cook' && (k.puff -= dt) <= 0) { k.puff = 0.45; sparkle(new THREE.Vector3(s.x - 1.1, 1.25, -3.4), Math.random() < 0.5 ? '#ff9a3d' : '#ffe08a'); }
+    if (k.timer <= 0) {
+      k.carry = itemMesh(k.job.id); scene.add(k.carry);
+      k.step = 'serve';
+      const [, sk] = k.job.seatKey.split('-').map(Number);
+      k.spot = new THREE.Vector3(s.x + SEAT_OFFSETS[sk], 0, -2.45);
+    }
+  } else if (k.step === 'serve') {
+    const arrived = moveCounselor(c, k.spot, dt);
+    anim = { walking: !arrived, phase: (k.phase += dt * 9), hold: true };
+    if (arrived) { c.rotation.y = 0; serveDone(i, k); }
+  }
+  if (k.carry) { // 두 손 앞에 들고 감
+    const f = new THREE.Vector3(Math.sin(c.rotation.y), 0, Math.cos(c.rotation.y));
+    k.carry.position.set(c.position.x + f.x * 0.32, 0.82, c.position.z + f.z * 0.32);
+  }
+  animateCharacter(c, anim, now);
+}
+function serveDone(i, k) {
+  const job = k.job; k.job = null; k.step = 'idle';
+  if (k.carry) { scene.remove(k.carry); k.carry = null; }
+  const st = stallState[i], m = MENU_BY_ID[job.id];
+  if (job.seatKey !== me.seatKey) return; // 그 사이 자리를 떴으면
+  me.orders.push(job.id);
+  if (me.orders.length > 6) me.orders.shift();
+  setTable(me.seatKey, me.orders); net.update();
+  let line = ORDER_LINES[job.id] || `${m.name} 나왔어.`;
+  if (me.saju && job.id === SNACK_BY_EL[me.saju.weak]) line += ` 약한 ${ELEMENTS[me.saju.weak].name} 기운 채워주는 거라 딱이야.`;
+  const text = styleize(line, st.persona);
+  st.history.push({ role: 'assistant', content: `(${m.name} 서빙) ${text}` });
+  bubbleOn(st.counselor, text, 4500);
+  if (curStall === i) { addMsg(`${m.emoji} ${text}`, 'bot'); renderMenu(); }
+  talking = i; setTimeout(() => { if (talking === i) talking = -1; }, 1500);
+  setKitchenStatus(kitchenOf(i).queue.length ? `🧾 남은 주문 ${kitchenOf(i).queue.length}개` : '');
+}
+function setKitchenStatus(t) { const el = $('kitchen'); if (!el) return; el.textContent = t; el.classList.toggle('hidden', !t); }
+
+// ---------------- 건배: 잔 들고 짠 ----------------
+const toasts = [];
+function glassMesh(orders = []) {
+  const last = [...orders].reverse().find((id) => DRINK_IDS.has(id)) || 'soju';
+  const g = new THREE.Group();
+  const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.2, ...o });
+  if (last === 'beer') { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.15, 10), M(0xf0a020, { transparent: true, opacity: 0.9, emissive: 0x804000, emissiveIntensity: 0.3 })); g.add(m); const f = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.03, 10), M(0xffffff)); f.position.y = 0.09; g.add(f); }
+  else if (last === 'makgeolli') { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.05, 0.06, 12), M(0xf2c14e, { metalness: 0.6 })); g.add(m); }
+  else { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.032, 0.07, 10), M(last === 'cider' ? 0xd8fff0 : 0xffffff, { transparent: true, opacity: 0.75, emissive: 0xffffff, emissiveIntensity: 0.15 })); g.add(m); }
+  return g;
+}
+function participant(kind, ref) {
+  if (kind === 'me') return { kind, char: player.body, host: player.group, orders: me.orders, say: (t) => player.say(t, performance.now()) };
+  if (kind === 'counselor') { const st = stallState[ref]; return { kind, char: st.counselor, host: st.counselor, st, orders: ['soju'], say: (t) => bubbleOn(st.counselor, t, 2500) }; }
+  const av = avatars.get(ref); if (!av) return null;
+  const info = lastAll.find((a) => a.id === ref);
+  return { kind, char: av.body, host: av.group, orders: info?.orders || [], say: (t) => av.say(t, performance.now()) };
+}
+function startToast(a, b) {
+  if (!a || !b || !a.char || !b.char) return;
+  const now = performance.now();
+  [a, b].forEach((p, idx) => {
+    const q = idx ? a : b;
+    const qp = q.host.getWorldPosition(new THREE.Vector3());
+    const arms = p.char.userData.parts.arms;
+    const d0 = arms[0].getWorldPosition(new THREE.Vector3()).distanceTo(qp), d1 = arms[1].getWorldPosition(new THREE.Vector3()).distanceTo(qp);
+    p.arm = d0 < d1 ? 0 : 1;
+    p.glass = glassMesh(p.orders); p.glass.position.set(0, -0.36, 0.06); arms[p.arm].add(p.glass);
+    if (p.st) p.st.toasting = true;
+  });
+  toasts.push({ a, b, t0: now, clinked: false });
+}
+function tickToasts(now) {
+  for (let i = toasts.length - 1; i >= 0; i--) {
+    const T = toasts[i], t = (now - T.t0) / 1000;
+    const k = t < 0.7 ? t / 0.7 : t < 1.8 ? 1 : Math.max(0, 1 - (t - 1.8) / 0.6);
+    [[T.a, T.b], [T.b, T.a]].forEach(([p, q]) => {
+      const pp = p.host.getWorldPosition(new THREE.Vector3()), qp = q.host.getWorldPosition(new THREE.Vector3());
+      const want = Math.atan2(qp.x - pp.x, qp.z - pp.z);
+      if (p.kind === 'counselor') {
+        if (!p.from) p.from = p.char.position.clone();
+        const front = new THREE.Vector3(qp.x, 0, -2.2);
+        const kk = Math.min(1, t / 0.6);
+        p.char.position.lerpVectors(p.from, front, t < 1.8 ? kk : 1);
+        p.char.rotation.y = Math.atan2(qp.x - p.char.position.x, qp.z - p.char.position.z);
+      }
+      else { let off = want - p.host.rotation.y; while (off > Math.PI) off -= Math.PI * 2; while (off < -Math.PI) off += Math.PI * 2; p.char.rotation.y = THREE.MathUtils.clamp(off, -1.1, 1.1) * k; }
+      const arm = p.char.userData.parts.arms[p.arm];
+      arm.rotation.x = -0.6 - 1.25 * k;
+      arm.rotation.z = (p.arm ? -0.35 : 0.35) * k;
+    });
+    if (!T.clinked && t > 0.95) {
+      T.clinked = true; clink();
+      const m = T.a.glass.getWorldPosition(new THREE.Vector3()).add(T.b.glass.getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5);
+      sparkle(m, '#fff3c4'); sparkle(m, '#ffd27a');
+      T.a.say('짠! 🍶'); T.b.say('짠!');
+    }
+    if (t > 2.4) {
+      [T.a, T.b].forEach((p) => { p.glass.parent?.remove(p.glass); p.char.userData.parts.arms[p.arm].rotation.z = 0; if (p.kind !== 'counselor') p.char.rotation.y = 0; if (p.st) { p.st.toasting = false; const kq = kitchenOf(p.st.idx); if (kq.job && kq.step !== 'serve') { kq.resume = kq.timer; kq.step = 'go'; } } });
+      toasts.splice(i, 1);
+    }
+  }
+}
+// 건배 상대 고르기
+function openCheersPick() {
+  const box = $('cheers-pick'); box.innerHTML = '';
+  const add = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = () => { box.classList.add('hidden'); fn(); }; box.appendChild(b); };
+  add(`🧑‍🍳 ${stallState[curStall].persona.name}`, () => cheersWith('counselor'));
+  const mine = mySeatStall();
+  lastAll.filter((a) => a.seated && a.seatKey && Number(a.seatKey.split('-')[0]) === mine)
+    .sort((a, b) => Math.abs(a.x - player.pos.x) - Math.abs(b.x - player.pos.x)).slice(0, 4)
+    .forEach((a) => add(`🍶 ${a.name}${a.bot ? '' : ' (손님)'}`, () => cheersWith(a.id)));
+  if (box.children.length === 1) { const p = document.createElement('div'); p.className = 'muted tiny'; p.textContent = '옆자리가 비었어요'; box.appendChild(p); }
+  box.classList.toggle('hidden');
+}
+function cheersWith(target) {
+  if (curStall < 0) return;
+  const b = target === 'counselor' ? participant('counselor', curStall) : participant('avatar', target);
+  startToast(participant('me'), b);
+  net.cheers(curStall, target);
+}
+
+// ---------------- 거리 생활감 · 버스킹 · 연극 · 테마 ----------------
+const street = buildStreet(scene, { high: HIGH });
+let theme = null; // { ...theme, at, by, until }
+let lastRush = -1, honkT = 0;
+const showModal = (id) => $(id).classList.remove('hidden');
+document.querySelectorAll('.close-modal').forEach((b) => { b.onclick = () => b.closest('.overlay').classList.add('hidden'); });
+
+// --- 테마 (프롬프트로 거리 바꾸기)
+const THEME_SEC = 180;
+let lastThemeAt = 0;
+$('btn-theme').onclick = () => {
+  const c = $('theme-chips'); c.innerHTML = '';
+  ['첫눈 오는 크리스마스 이브', '봄밤 벚꽃 축제', '으스스한 할로윈 거리', '한여름 밤 불꽃 축제', '비 오는 재즈바 감성'].forEach((t) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.onclick = () => requestTheme(t); c.appendChild(b); });
+  showModal('theme-modal'); setTimeout(() => $('theme-q').focus(), 50);
+};
+$('theme-form').onsubmit = (e) => { e.preventDefault(); const v = $('theme-q').value.trim(); if (v) { $('theme-q').value = ''; requestTheme(v); } };
+async function requestTheme(prompt) {
+  $('theme-modal').classList.add('hidden');
+  if (Date.now() - lastThemeAt < 60000) { toast('거리 바꾸기는 1분에 한 번만 할 수 있어요'); return; }
+  lastThemeAt = Date.now();
+  toast(`✨ "${prompt}" — 거리를 바꾸는 중…`);
+  const t = await makeTheme(prompt);
+  const th = { ...t, prompt: cleanChat(prompt).slice(0, 40), at: Date.now(), until: Date.now() + THEME_SEC * 1000, by: me.id, byName: me.name };
+  applyTheme(th, true);
+  me.theme = th; net.theme(th); net.update();
+}
+function applyTheme(th, mine = false) {
+  if (th && (th.until < Date.now() || (theme && th.at <= theme.at))) return;
+  theme = th;
+  street.applyTheme(th);
+  if (th) {
+    sparkle(new THREE.Vector3(player ? player.pos.x : 0, 3, player ? player.pos.z - 3 : 0), '#ffd27a');
+    toast(mine ? `✨ 거리가 "${th.title}"(으)로 바뀌었어요!` : `✨ ${th.byName || '누군가'}님이 거리를 "${th.title}"(으)로 바꿨어요`);
+    if (th.busker) bubbleOn(street.busker, th.busker, 5000);
+  }
+}
+function tickTheme() {
+  if (theme && Date.now() > theme.until) { theme = null; me.theme = null; street.applyTheme(null); toast('거리가 원래 모습으로 돌아왔어요'); }
+  const pill = $('theme-pill');
+  if (theme) { const left = Math.max(0, Math.ceil((theme.until - Date.now()) / 1000)); pill.textContent = `✨ ${theme.title} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} 남음`; pill.classList.remove('hidden'); }
+  else pill.classList.add('hidden');
+}
+
+// --- 버스킹
+let buskReq = null; // { song, until }
+let clapCooldown = 0;
+function currentSong(nowSec) {
+  if (buskReq && Date.now() < buskReq.until) return SONGS.find((s) => s.id === buskReq.song) || SONGS[0];
+  const mood = theme ? theme.mood : { water: 'sad', fire: 'festive', metal: 'snow', wood: 'warm', earth: 'warm' }[weatherEl] || 'warm';
+  const pool = SONGS.filter((s) => s.mood === mood);
+  return pool[Math.floor(nowSec / 120) % pool.length] || SONGS[0];
+}
+let lastSongId = '';
+$('btn-clap').onclick = () => {
+  if (performance.now() < clapCooldown) return; clapCooldown = performance.now() + 1500;
+  clap(); player.wave = 1.5; me.wave = Date.now() + 1500; net.clap(); net.update();
+  if (Math.random() < 0.5) bubbleOn(street.busker, ['감사합니다~!', '박수 고마워요 🙏', '다음 곡도 들어주세요!'][Math.floor(Math.random() * 3)], 2500);
+};
+$('btn-request').onclick = () => {
+  const l = $('song-list'); l.innerHTML = '';
+  SONGS.forEach((s) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = `🎵 ${s.title}`; b.onclick = () => { $('song-modal').classList.add('hidden'); const r = { song: s.id, until: Date.now() + 90000, by: me.name }; buskReq = r; net.busk(r); bubbleOn(street.busker, `신청곡 "${s.title}" 갑니다!`, 4000); }; l.appendChild(b); });
+  showModal('song-modal');
+};
+
+// --- 즉석 연극
+let playBusy = false;
+$('btn-ticket').onclick = () => {
+  if (street.play) { toast('지금 야외무대에서 공연 중이에요! 공원으로 들어가 보세요'); return; }
+  showModal('play-modal'); setTimeout(() => $('play-q').focus(), 50);
+};
+$('play-form').onsubmit = async (e) => {
+  e.preventDefault();
+  if (playBusy) return; playBusy = true;
+  const topic = $('play-q').value.trim(); $('play-q').value = '';
+  $('play-modal').classList.add('hidden');
+  bubbleOn(street.barker, '작가님이 대본 쓰는 중이에요! ✍️', 6000);
+  toast('🎭 AI 작가가 대본을 쓰는 중…');
+  const script = (await makePlay(topic, theme ? theme.title : ELEMENTS[weatherEl]?.weather)) || PLAY_PRESETS[Math.floor(Math.random() * PLAY_PRESETS.length)];
+  const p = { script, startAt: Date.now() + 6000, by: me.name };
+  startPlay(p); net.play(p);
+  playBusy = false;
+};
+$('btn-goplay').onclick = () => { if (!player) return; if (player.seat) stand(); player.pos.set(STAGE.x - 1 + Math.random() * 2, 0, STAGE.z + 8.5); player.yaw = 0; player.pitch = 0.25; player.dist = 7; };
+function startPlay(p) {
+  if (street.play) return;
+  street.startPlay(p.script, p.startAt, (actor, text, ms, ln) => {
+    bubbleOn(actor, text, ms);
+    const name = p.script.cast[ln.who]?.name || '';
+    const near = player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 26;
+    if (near) { const sub = $('subtitle'); sub.innerHTML = ''; const b = document.createElement('b'); b.textContent = `${name}  `; sub.appendChild(b); sub.appendChild(document.createTextNode(text)); sub.classList.remove('hidden'); }
+  });
+  street.play.end = () => { $('subtitle').classList.add('hidden'); const near = player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 26; if (near) { clap(); toast(`👏 「${p.script.title}」 공연 끝! 박수~`); } };
+  toast(`🎭 ${p.by ? p.by + '님이 연 ' : ''}즉석 연극 「${p.script.title}」 곧 시작! (마로니에 야외무대)`);
+  bubbleOn(street.barker, `「${p.script.title}」 곧 시작해요~!`, 5000);
+}
+
+function tickStreet(dt, now, nowSec) {
+  street.update(nowSec, dt, now);
+  tickTheme();
+  // 음악: 무대와의 거리에 따라 볼륨
+  if (player) {
+    const d = player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z));
+    const song = currentSong(nowSec);
+    tickMusic(song, THREE.MathUtils.clamp(1 - (d - 6) / 34, 0, 1), !!street.play);
+    if (song.id !== lastSongId && d < 30) { lastSongId = song.id; if (!street.play) bubbleOn(street.busker, `🎵 다음 곡: ${song.title}`, 4000); }
+    const nearStage = d < 13 && !player.seat;
+    $('btn-clap').classList.toggle('hidden', !nearStage);
+    $('btn-request').classList.toggle('hidden', !nearStage || !!street.play);
+    const nearBooth = !player.seat && Math.hypot(player.pos.x + 1.2, player.pos.z - 8.9) < 2.6;
+    $('btn-ticket').classList.toggle('hidden', !nearBooth);
+    $('btn-goplay').classList.toggle('hidden', !street.play || d < 20);
+    // 열차 도착 알림
+    if (street.rush >= 0 && street.rush !== lastRush) { lastRush = street.rush; if (Math.abs(player.pos.x - 28) < 35 && player.pos.z > -1) toast('🚇 혜화역에 열차 도착 — 사람들이 쏟아져 나와요'); }
+    // 차도에 서 있으면 빵빵
+    if (!player.seat && street.nearCar(player.pos.x, player.pos.z) && now > honkT) { honkT = now + 3000; honk(); toast('🚕 빵빵! 차 조심해요'); }
+  }
+}
+
 // ---------------- 루프 ----------------
 const clock = new THREE.Clock();
 let moveT = 0;
@@ -507,7 +802,8 @@ function frame() {
   }
   syncAvatars(dt, now, nowSec);
   // 상담사 애니메이션
-  stallState.forEach((st, i) => { if (st.counselor) { animateCharacter(st.counselor, { talk: talking === i || Math.sin(now / 2000 + i) > 0.7 }, now); st.counselor.rotation.y = Math.sin(now / 3000 + i) * 0.25; } });
+  stallState.forEach((st, i) => updateCounselor(i, dt, now));
+  tickToasts(now); tickBubbles(now);
   // 김
   world.stalls.forEach((s) => s.steam.forEach((p) => {
     p.t = (p.t + dt * 0.35) % 1;
@@ -531,7 +827,8 @@ function frame() {
   const oy = panelOpen && W <= 700 && H > 500 ? H * 0.27 : 0;
   viewOff.x += (ox - viewOff.x) * Math.min(1, dt * 4); viewOff.y += (oy - viewOff.y) * Math.min(1, dt * 4);
   if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(W, H, viewOff.x, viewOff.y, W, H); else camera.clearViewOffset();
-  updateWeather(world.weather, world, weatherEl, dt, now);
+  tickStreet(dt, now, nowSec);
+  updateWeather(world.weather, world, theme ? themeWeather(theme) : weatherEl, dt, now);
   setRain(world.weather.cur.rain);
   world.streaks.forEach((s, i) => { s.material.opacity = 0.5 + Math.sin(now / 700 + i) * 0.15; });
   composer.render();
@@ -540,4 +837,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // 테스트·시연용 핸들
-window.__sp = { me, order, sendChat, buyBungeo, showTab, get nearBungeo() { return nearBungeo; }, get player() { return player; }, stallState, world, sit, stand, ask, restyle, showCard, get nearSeat() { return nearSeat; }, avatars, relation };
+window.__sp = { street, requestTheme, startPlay, get theme() { return theme; }, kitchenOf, get lastAll() { return lastAll; }, me, cheersWith, openCheersPick, stallState, order, sendChat, buyBungeo, showTab, get nearBungeo() { return nearBungeo; }, get player() { return player; }, stallState, world, sit, stand, ask, restyle, showCard, get nearSeat() { return nearSeat; }, avatars, relation };

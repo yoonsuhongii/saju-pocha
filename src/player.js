@@ -1,7 +1,7 @@
 // 내 캐릭터: 3인칭 이동 + 포차 의자에 앉기 + 입력(키보드/마우스/터치 조이스틱)
 import * as THREE from 'three';
 import { makeCharacter, animateCharacter, nameSprite, bubbleSprite } from './character.js';
-import { WALK, itemMesh } from './scene.js';
+import { WALK, walkable, itemMesh } from './scene.js';
 
 // 말풍선·손에 든 물건 공용 기능
 function say(self, text, now, dur = 6000) {
@@ -75,8 +75,10 @@ export class Player {
       const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
       const dir = fwd.multiplyScalar(mz).add(right.multiplyScalar(mx));
       const sp = (input.run ? 6.5 : 3.6) * Math.min(1, len);
-      this.pos.x = THREE.MathUtils.clamp(this.pos.x + dir.x * sp * dt, WALK.minX, WALK.maxX);
-      this.pos.z = THREE.MathUtils.clamp(this.pos.z + dir.z * sp * dt, WALK.minZ, WALK.maxZ);
+      const nx = this.pos.x + dir.x * sp * dt, nz = this.pos.z + dir.z * sp * dt;
+      if (walkable(nx, nz)) { this.pos.x = nx; this.pos.z = nz; }
+      else if (walkable(nx, this.pos.z)) this.pos.x = nx;
+      else if (walkable(this.pos.x, nz)) this.pos.z = nz;
       this.facing = Math.atan2(dir.x, dir.z);
       this.walking = true;
       this.phase += dt * (input.run ? 13 : 9);
@@ -107,7 +109,7 @@ export class Player {
     const cam = target.clone().add(off);
     cam.y = Math.max(cam.y, 0.5);
     cam.z = Math.min(cam.z, 11.7);
-    if (cam.z < -5.6) cam.z = -5.6;
+    if (this.pos.z > -1 && Math.abs(this.pos.x) > 3 && cam.z < -5.6) cam.z = -5.6;
     camera.position.lerp(cam, Math.min(1, dt * 7));
     camera.lookAt(target);
   }

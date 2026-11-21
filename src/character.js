@@ -81,7 +81,7 @@ export function makeCharacter(look = {}) {
 }
 
 /** 걷기/앉기/손 흔들기/말하기 애니메이션 */
-export function animateCharacter(c, { walking = false, phase = 0, seated = false, wave = false, talk = false, cheer = false }, now) {
+export function animateCharacter(c, { walking = false, phase = 0, seated = false, wave = false, talk = false, cheer = false, cook = false, hold = false, grab = false }, now) {
   const p = c.userData.parts;
   if (!p) return;
   const sw = walking ? Math.sin(phase) * 0.6 : 0;
@@ -89,6 +89,9 @@ export function animateCharacter(c, { walking = false, phase = 0, seated = false
   else { p.legs[0].rotation.x = sw; p.legs[1].rotation.x = -sw; }
   if (wave) { p.arms[1].rotation.x = -2.7 + Math.sin(now / 110) * 0.35; p.arms[0].rotation.x = -sw * 0.7; }
   else if (cheer) { p.arms.forEach((a, i) => { a.rotation.x = -2.5 + Math.sin(now / 140 + i) * 0.3; }); }
+  else if (cook) { p.arms[0].rotation.x = -1.3 + Math.sin(now / 90) * 0.35; p.arms[1].rotation.x = -1.0 + Math.cos(now / 120) * 0.25; }
+  else if (grab) { p.arms[0].rotation.x = -0.3; p.arms[1].rotation.x = -2.2 + Math.sin(now / 200) * 0.2; }
+  else if (hold) { p.arms.forEach((a) => { a.rotation.x = -1.35; }); }
   else { p.arms[0].rotation.x = -sw * 0.7 + (seated ? -0.6 : 0); p.arms[1].rotation.x = sw * 0.7 + (seated ? -0.6 : 0); }
   p.head.rotation.z = talk ? Math.sin(now / 160) * 0.06 : 0;
   p.head.position.y = 1.22 + (talk ? Math.abs(Math.sin(now / 120)) * 0.015 : 0) + (walking ? Math.abs(Math.sin(phase)) * 0.02 : 0);

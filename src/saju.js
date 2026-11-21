@@ -110,17 +110,17 @@ export function todayFortune(saju, date = new Date()) {
   else if (GEN[me] === tEl) { rel = '식상'; tone = '내 기운이 밖으로 흘러가는 날. 말하고 표현하면 풀려요.'; }
   else if (CTRL[me] === tEl) { rel = '재성'; tone = '내가 다루는 기운이 오는 날. 정리하고 실행하기 좋아요.'; }
   else { rel = '관성'; tone = '나를 다그치는 기운이 오는 날. 책임감이 커지니 너무 몰아붙이지 마세요.'; }
-  return { today, todayEl: tEl, rel, tone };
+  return { today, todayEl: tEl, rel, relPlain: REL_PLAIN[rel], tone };
 }
 
 /** 부족한 기운을 채워주는 안주 */
 export function snackFor(el) {
   return {
-    wood: { name: '부추전', why: '초록 기운(木)을 채워줘요' },
-    fire: { name: '떡볶이', why: '매콤한 불 기운(火)을 채워줘요' },
-    earth: { name: '계란말이', why: '노란 흙 기운(土)으로 마음을 다져줘요' },
-    metal: { name: '두부김치', why: '하얀 쇠 기운(金)으로 정리를 도와줘요' },
-    water: { name: '어묵탕', why: '따뜻한 국물(水)이 흐름을 풀어줘요' },
+    wood: { name: '부추전', why: '초록 나무 기운을 채워줘요' },
+    fire: { name: '떡볶이', why: '매콤한 불 기운을 채워줘요' },
+    earth: { name: '계란말이', why: '노란 흙 기운으로 마음을 다져줘요' },
+    metal: { name: '두부김치', why: '하얀 쇠 기운으로 정리를 도와줘요' },
+    water: { name: '어묵탕', why: '따뜻한 물 기운 국물이 흐름을 풀어줘요' },
   }[el];
 }
 
@@ -136,6 +136,17 @@ export function sajuSummary(s) {
     dominant: ELEMENTS[s.dominant].ko, lacking: s.lacking.map((k) => ELEMENTS[k].ko).join(',') || '없음', animal: s.animal,
   };
 }
+
+const REL_PLAIN = { 비견: '나랑 같은 기운의 날', 인성: '나를 도와주는 날', 식상: '표현하는 날', 재성: '실속 챙기는 날', 관성: '책임감이 커지는 날' };
+// 십성을 일상어로
+export const GOD_PLAIN = {
+  비견: '나랑 닮은 친구·동료 기운(자존심, 독립심)', 겁재: '승부욕·라이벌 기운(지기 싫은 마음)',
+  식신: '즐기고 재능을 펼치는 기운(여유, 손재주)', 상관: '말솜씨·표현·반항 기운(할 말은 하는 성격)',
+  편재: '모험·큰돈·사람을 넓게 사귀는 기운', 정재: '꼼꼼함·성실·돈 관리 기운',
+  편관: '압박·도전·카리스마 기운(버티는 힘)', 정관: '책임감·규칙·조직 기운',
+  편인: '독특한 생각·직감 기운(혼자만의 세계)', 정인: '배움·보살핌을 받는 기운(엄마 같은 지원)',
+};
+const EL_PLAIN = { wood: '나무', fire: '불', earth: '흙', metal: '쇠', water: '물' };
 
 // ---------------- 상담용 상세 명식 (십성·신강약·올해 운) ----------------
 // 지지 본기(지장간의 주된 천간)
@@ -153,34 +164,32 @@ export function tenGod(dayStem, other) {
 const SEASON = ['겨울', '겨울', '봄', '봄', '봄', '여름', '여름', '여름', '가을', '가을', '가을', '겨울'];
 export function sajuDetail(s, date = new Date()) {
   const ds = s.pillars.day.s;
-  const P = [['년주', s.pillars.year], ['월주', s.pillars.month], ['일주', s.pillars.day], ['시주', s.pillars.hour]];
-  const pillars = P.filter(([, p]) => p).map(([lab, p]) => ({
-    자리: lab, 글자: `${p.h}(${p.ko})`,
-    천간: `${STEMS_H[p.s]} ${ELEMENTS[STEM_EL[p.s]].ko}${YIN(p.s) ? '음' : '양'}${lab === '일주' ? ' = 일간(나)' : ` · ${tenGod(ds, p.s)}`}`,
-    지지: `${BRANCHES_H[p.b]} ${ELEMENTS[BRANCH_EL[p.b]].ko} · ${tenGod(ds, BRANCH_MAIN[p.b])}`,
-  }));
-  // 신강/신약: 나를 돕는 기운(비겁+인성) 개수, 월지는 가중치 2
+  const P = [['태어난 해', s.pillars.year], ['태어난 달', s.pillars.month], ['태어난 날(나 자신)', s.pillars.day], ['태어난 시간', s.pillars.hour]];
+  const pillars = P.filter(([, p]) => p).map(([lab, p], i) => {
+    const top = lab.startsWith('태어난 날') ? `${STEMS[p.s]}(${EL_PLAIN[STEM_EL[p.s]]}) — 나를 뜻하는 글자` : `${STEMS[p.s]}(${EL_PLAIN[STEM_EL[p.s]]}) — ${GOD_PLAIN[tenGod(ds, p.s)]}`;
+    return { 자리: lab, 글자: p.ko, 윗글자: top, 아랫글자: `${BRANCHES[p.b]}(${EL_PLAIN[BRANCH_EL[p.b]]}) — ${GOD_PLAIN[tenGod(ds, BRANCH_MAIN[p.b])]}` };
+  });
   const me = STEM_EL[ds];
   let help = 0, total = 0;
   P.forEach(([lab, p]) => {
     if (!p) return;
-    [[p.s, lab === '일주' ? 0 : 1], [BRANCH_MAIN[p.b], lab === '월주' ? 2 : 1]].forEach(([st, w]) => {
+    [[p.s, lab.startsWith('태어난 날') ? 0 : 1], [BRANCH_MAIN[p.b], lab === '태어난 달' ? 2 : 1]].forEach(([st, w]) => {
       total += w; const e = STEM_EL[st]; if (e === me || GEN[e] === me) help += w;
     });
   });
-  const strength = help / total >= 0.55 ? '신강(기운이 센 편)' : help / total <= 0.35 ? '신약(기운이 여린 편)' : '중화에 가까움';
+  const strength = help / total >= 0.55 ? '내 기운이 센 편 — 밀어붙이는 힘이 있지만 고집도 셈' : help / total <= 0.35 ? '내 기운이 여린 편 — 주변 도움과 쉼이 있어야 힘이 남' : '기운이 비교적 균형 잡힌 편';
   const gods = {};
-  P.forEach(([lab, p]) => { if (!p) return; if (lab !== '일주') { const g = tenGod(ds, p.s); gods[g] = (gods[g] || 0) + 1; } const g2 = tenGod(ds, BRANCH_MAIN[p.b]); gods[g2] = (gods[g2] || 0) + 1; });
+  P.forEach(([lab, p]) => { if (!p) return; const list = lab.startsWith('태어난 날') ? [BRANCH_MAIN[p.b]] : [p.s, BRANCH_MAIN[p.b]]; list.forEach((st) => { const g = GOD_PLAIN[tenGod(ds, st)]; gods[g] = (gods[g] || 0) + 1; }); });
   const y = date.getMonth() + 1 < 2 || (date.getMonth() === 1 && date.getDate() < 4) ? date.getFullYear() - 1 : date.getFullYear();
   const yp = pillar(mod(y - 4, 10), mod(y - 4, 12));
   return {
     pillars, 띠: s.animal,
-    일간: `${s.dayMaster.h}(${s.dayMaster.stem}) ${ELEMENTS[me].name} — ${s.dayMaster.desc}`,
-    태어난계절: `${SEASON[s.pillars.month.b]} (월지 ${BRANCHES_H[s.pillars.month.b]})`,
-    오행개수: Object.fromEntries(Object.entries(s.count).map(([k, n]) => [`${ELEMENTS[k].h}${ELEMENTS[k].ko}`, n])),
-    많은기운: ELEMENTS[s.dominant].h, 없는기운: s.lacking.map((k) => ELEMENTS[k].h).join(',') || '없음',
-    신강약: strength, 십성분포: gods,
+    나를_뜻하는_글자: `${s.dayMaster.stem}(${EL_PLAIN[me]}) — ${s.dayMaster.desc}`,
+    태어난계절: SEASON[s.pillars.month.b],
+    오행개수: Object.fromEntries(Object.entries(s.count).map(([k, n]) => [EL_PLAIN[k], n])),
+    가장_많은_기운: EL_PLAIN[s.dominant], 없는_기운: s.lacking.map((k) => EL_PLAIN[k]).join(',') || '없음', 약한_기운: EL_PLAIN[s.weak],
+    기운_세기: strength, 많이_가진_성향: gods,
     시간모름: !s.pillars.hour,
-    올해: `${y}년 ${yp.h}(${yp.ko})년 — 천간 ${tenGod(ds, yp.s)}, 지지 ${tenGod(ds, BRANCH_MAIN[yp.b])}의 해`,
+    올해: `${y}년 ${yp.ko}년 — ${GOD_PLAIN[tenGod(ds, yp.s)]}과 ${GOD_PLAIN[tenGod(ds, BRANCH_MAIN[yp.b])]}이 들어오는 해`,
   };
 }

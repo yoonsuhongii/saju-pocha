@@ -89,7 +89,7 @@ export function styleize(text, persona) {
   if (/부산|경상/.test(sp)) return `마, ${text.replace(/거야\./g, '기다.').replace(/해\./g, '해라.')} 됐다 고마, 묵고 가라.`;
   if (/전라|할매/.test(sp)) return `${text.replace(/거야\./g, '거여.').replace(/해\./g, '혀잉.')}`;
   if (/하오|사극|선비/.test(sp)) return `${text.replace(/거야\./g, '것이오.').replace(/해\./g, '하시오.').replace(/봐\./g, '보시오.')} 과유불급이라 했소.`;
-  if (/존댓말/.test(sp)) return text.replace(/거야\./g, '거예요.').replace(/해\./g, '해요.').replace(/봐\./g, '봐요.').replace(/자\./g, '자요.').replace(/돼\./g, '돼요.').replace(/있어\./g, '있어요.');
+  if (/존댓말/.test(sp)) return text.replace(/나왔어\./g, '나왔어요.').replace(/줄게\./g, '줄게요.').replace(/딱이야\./g, '딱이에요.').replace(/마셔\./g, '드세요.').replace(/먹어\./g, '드세요.').replace(/맵다\./g, '매워요.').replace(/돼\./g, '돼요.').replace(/거야\./g, '거예요.').replace(/거야\./g, '거예요.').replace(/해\./g, '해요.').replace(/봐\./g, '봐요.').replace(/자\./g, '자요.').replace(/돼\./g, '돼요.').replace(/있어\./g, '있어요.');
   return text;
 }
 
@@ -153,4 +153,50 @@ export function cleanChat(t) {
   let s = String(t).replace(/\s+/g, ' ').trim().slice(0, 80);
   BAD.forEach((w) => { s = s.split(w).join('♡'.repeat(w.length)); });
   return s;
+}
+
+// ---------------- 즉석 연극 ----------------
+export async function makePlay(topic, mood) {
+  try {
+    const j = await post('/api/play', { topic, mood }, 30000);
+    if (!j?.lines?.length || !j?.cast?.length) throw new Error('bad');
+    const n = Math.min(3, j.cast.length);
+    return {
+      title: String(j.title || '즉석 연극').slice(0, 14),
+      cast: j.cast.slice(0, n).map((c) => ({ name: String(c.name || '배우').slice(0, 10) })),
+      lines: j.lines.slice(0, 10).map((l) => ({ who: Math.max(0, Math.min(n - 1, +l.who || 0)), text: cleanChat(String(l.text || '…')).slice(0, 60), act: ['talk', 'wave', 'cheer', 'walk'].includes(l.act) ? l.act : 'talk' })),
+    };
+  } catch { return null; }
+}
+
+// ---------------- 거리 테마 ----------------
+const THEME_PRESETS = [
+  { k: ['눈', '겨울', '첫눈'], t: { title: '첫눈 오는 대학로', weather: 'snow', sky: '#0a1024,#3a4a6a'.split(','), fog: '#1a2236', bulb: '#dff1ff', decor: 'snowmen', banner: '첫눈 오는 날 마로니에에서', bannerBg: '#1c7ed6', outfits: ['#f8f9fa', '#ff6b6b', '#4dabf7', '#ffd43b', '#868e96'], accessory: 'beanie', mood: 'snow', busker: '첫눈엔 이 노래죠' } },
+  { k: ['벚꽃', '봄'], t: { title: '봄밤 벚꽃 축제', weather: 'petals', sky: '#140a1e,#4a2a4a'.split(','), fog: '#2a1a2a', bulb: '#ffc2d6', decor: 'flowers', banner: '대학로 봄밤 벚꽃 축제', bannerBg: '#e64980', outfits: ['#ffdeeb', '#fcc2d7', '#ffffff', '#d0ebff', '#fff3bf'], accessory: 'flower', mood: 'warm', busker: '봄노래 갑니다' } },
+  { k: ['할로윈', '호박', '귀신'], t: { title: '대학로 할로윈', weather: 'fog', sky: '#0a0514,#3a1a3a'.split(','), fog: '#24122a', bulb: '#ff922b', decor: 'pumpkins', banner: '해피 할로윈 대학로', bannerBg: '#5f3dc4', outfits: ['#212529', '#7048e8', '#ff922b', '#2b8a3e', '#c92a2a'], accessory: 'hat', mood: 'festive', busker: '으스스한 거 한 곡!' } },
+  { k: ['크리스마스', '성탄', '산타'], t: { title: '크리스마스 이브', weather: 'snow', sky: '#050a18,#2a2a4a'.split(','), fog: '#1a1a2e', bulb: '#ffe066', decor: 'xmas', banner: '메리 크리스마스 대학로', bannerBg: '#c92a2a', outfits: ['#c92a2a', '#2b8a3e', '#ffffff', '#ffd43b'], accessory: 'beanie', mood: 'snow', busker: '캐럴 느낌으로!' } },
+  { k: ['축제', '여름', '불꽃', '신나'], t: { title: '한여름 밤 축제', weather: 'embers', sky: '#0a0518,#4a1a2a'.split(','), fog: '#2a1414', bulb: '#ff8787', decor: 'lanterns', banner: '대학로 한여름 밤 축제', bannerBg: '#f08c00', outfits: ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#f783ac'], accessory: 'none', mood: 'festive', busker: '다 같이 박수!' } },
+  { k: ['비', '재즈', '감성'], t: { title: '비 오는 재즈 밤', weather: 'rain', sky: '#02040c,#16203a'.split(','), fog: '#0a1020', bulb: '#ffd8a8', decor: 'none', banner: '비 오는 날엔 대학로 재즈', bannerBg: '#343a40', outfits: ['#495057', '#343a40', '#1864ab', '#862e9c'], accessory: 'hat', mood: 'sad', busker: '비 오는 날 노래' } },
+];
+export function offlineTheme(prompt) {
+  const s = String(prompt);
+  const hit = THEME_PRESETS.find((x) => x.k.some((k) => s.includes(k)));
+  const t = hit ? hit.t : { ...THEME_PRESETS[4].t, title: s.slice(0, 12) || '거리 축제', banner: s.slice(0, 16) || '대학로 거리 축제', decor: 'balloons' };
+  return JSON.parse(JSON.stringify(t));
+}
+export async function makeTheme(prompt) {
+  try {
+    const t = await post('/api/theme', { prompt }, 30000);
+    if (!t?.title) throw new Error('bad');
+    const hex = (v, d) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : d);
+    return {
+      title: String(t.title).slice(0, 14), weather: ['clear', 'rain', 'snow', 'fog', 'petals', 'leaves', 'embers'].includes(t.weather) ? t.weather : 'clear',
+      sky: [hex(t.sky?.[0], '#05060f'), hex(t.sky?.[1], '#2a1f45')], fog: hex(t.fog, '#1a1424'), bulb: hex(t.bulb, '#ffd89a'),
+      decor: ['none', 'snowmen', 'pumpkins', 'xmas', 'lanterns', 'flowers', 'balloons'].includes(t.decor) ? t.decor : 'balloons',
+      banner: cleanChat(String(t.banner || t.title)).slice(0, 18), bannerBg: hex(t.bannerBg, '#c92a2a'),
+      outfits: (Array.isArray(t.outfits) ? t.outfits : []).map((c) => hex(c, null)).filter(Boolean).slice(0, 6),
+      accessory: ['none', 'beanie', 'hat', 'catears', 'flower', 'crown', 'headscarf', 'glasses'].includes(t.accessory) ? t.accessory : 'none',
+      mood: ['warm', 'sad', 'festive', 'snow'].includes(t.mood) ? t.mood : 'warm', busker: cleanChat(String(t.busker || '')).slice(0, 24),
+    };
+  } catch { return offlineTheme(prompt); }
 }
