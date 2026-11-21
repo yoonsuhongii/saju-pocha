@@ -9,7 +9,7 @@ import { buildScene, updateWeather, drawStallSign, setStallColor, STALL_COUNT, S
 import { makeCharacter, animateCharacter, nameSprite, randomLook, randomName } from './character.js';
 import { Player, Avatar, createInput } from './player.js';
 import { connect, botGuests, mixWeather, ONLINE_CAPABLE } from './net.js';
-import { calcSaju, todayFortune, snackFor, sajuSummary, ELEMENTS, relation } from './saju.js';
+import { calcSaju, todayFortune, snackFor, sajuSummary, sajuDetail, ELEMENTS, relation } from './saju.js';
 import { makePersona, counsel, stallDefault } from './ai.js';
 import { startAudio, setRain, clink, toggleSound } from './audio.js';
 
@@ -214,7 +214,7 @@ function openPanel(i) {
   renderChips();
 }
 function say(text) { const st = stallState[curStall]; st.history.push({ role: 'assistant', content: text }); addMsg(text, 'bot'); }
-const CHIPS = ['오늘 운세 어때요?', '진로가 고민이에요', '연애운 봐주세요', '요즘 너무 지쳐요', '사람 관계가 힘들어요'];
+const CHIPS = ['내 사주 전체 풀이해줘', '오늘 운세 어때요?', '진로가 고민이에요', '연애운 봐주세요', '요즘 너무 지쳐요', '사람 관계가 힘들어요'];
 function renderChips() {
   const c = $('chips'); c.innerHTML = '';
   CHIPS.forEach((t) => { const b = document.createElement('button'); b.textContent = t; b.type = 'button'; b.onclick = () => ask(t); c.appendChild(b); });
@@ -231,9 +231,10 @@ async function ask(text) {
   addMsg(text, 'me');
   const typing = addMsg('…', 'bot typing');
   talking = i;
-  const saju = me.saju ? { ...sajuSummary(me.saju), dayMasterDesc: me.saju.dayMaster.desc } : { note: '사주 정보 없음' };
+  const saju = me.saju ? sajuDetail(me.saju) : { note: '사주 정보 없음 — 사주 대신 대화로만 상담' };
   const res = await counsel({
-    persona: { name: st.persona.name, speech: st.persona.speech }, saju, fortune: me.saju ? todayFortune(me.saju) : {}, history: st.history, message: text,
+    persona: (({ name, speech, catchphrases, backstory, sample, greeting }) => ({ name, speech, catchphrases, backstory, sample, greeting }))(st.persona), saju,
+    fortune: me.saju ? (({ today, rel, tone }) => ({ 오늘: today.h, 나와의관계: rel, 풀이: tone }))(todayFortune(me.saju)) : {}, history: st.history, message: text,
   }, me.saju).catch(() => ({ text: '', offline: true }));
   let reply = res.text;
   if (!reply) reply = `${st.persona.greeting || ''} 사주를 몰라도 들어줄 수는 있어요. 오늘은 따뜻한 국물부터 한 그릇 해요.`;

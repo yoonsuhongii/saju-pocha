@@ -45,7 +45,7 @@ export function offlinePersona(prompt) {
 const okHex = (v, d) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : d);
 export async function makePersona(prompt) {
   try {
-    const p = await post('/api/persona', { prompt });
+    const p = await post('/api/persona', { prompt }, 30000);
     if (!p || !p.name || !p.look) throw new Error('bad');
     const d = DEFAULT_PERSONA.look;
     p.look = {
@@ -55,6 +55,7 @@ export async function makePersona(prompt) {
     };
     p.tarp = okHex(p.tarp, '#ff7a1a'); p.signColor = okHex(p.signColor, '#fff3d6');
     p.name = String(p.name).slice(0, 8); p.stallName = String(p.stallName || p.name).slice(0, 10);
+    ['speech', 'catchphrases', 'backstory', 'greeting', 'sample'].forEach((k) => { if (p[k]) p[k] = String(p[k]).slice(0, 200); });
     return p;
   } catch { return offlinePersona(prompt); }
 }
@@ -109,7 +110,7 @@ export function offlineCounsel({ persona, saju, fortune, message }) {
 export async function counsel(args, raw) {
   if (!raw) args = { ...args };
   try {
-    const r = await post('/api/counsel', args, 20000);
+    const r = await post('/api/counsel', args, 30000);
     if (!r.text) throw new Error('empty');
     return { text: r.text, offline: false };
   } catch {

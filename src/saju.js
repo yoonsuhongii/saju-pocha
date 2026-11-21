@@ -136,3 +136,51 @@ export function sajuSummary(s) {
     dominant: ELEMENTS[s.dominant].ko, lacking: s.lacking.map((k) => ELEMENTS[k].ko).join(',') || '없음', animal: s.animal,
   };
 }
+
+// ---------------- 상담용 상세 명식 (십성·신강약·올해 운) ----------------
+// 지지 본기(지장간의 주된 천간)
+const BRANCH_MAIN = [9, 5, 0, 1, 4, 2, 3, 5, 6, 7, 4, 8];
+const YIN = (s) => s % 2; // 0 양, 1 음
+/** 일간 기준 다른 천간의 십성 */
+export function tenGod(dayStem, other) {
+  const me = STEM_EL[dayStem], o = STEM_EL[other], same = YIN(dayStem) === YIN(other);
+  if (me === o) return same ? '비견' : '겁재';
+  if (GEN[me] === o) return same ? '식신' : '상관';
+  if (CTRL[me] === o) return same ? '편재' : '정재';
+  if (CTRL[o] === me) return same ? '편관' : '정관';
+  return same ? '편인' : '정인'; // GEN[o] === me
+}
+const SEASON = ['겨울', '겨울', '봄', '봄', '봄', '여름', '여름', '여름', '가을', '가을', '가을', '겨울'];
+export function sajuDetail(s, date = new Date()) {
+  const ds = s.pillars.day.s;
+  const P = [['년주', s.pillars.year], ['월주', s.pillars.month], ['일주', s.pillars.day], ['시주', s.pillars.hour]];
+  const pillars = P.filter(([, p]) => p).map(([lab, p]) => ({
+    자리: lab, 글자: `${p.h}(${p.ko})`,
+    천간: `${STEMS_H[p.s]} ${ELEMENTS[STEM_EL[p.s]].ko}${YIN(p.s) ? '음' : '양'}${lab === '일주' ? ' = 일간(나)' : ` · ${tenGod(ds, p.s)}`}`,
+    지지: `${BRANCHES_H[p.b]} ${ELEMENTS[BRANCH_EL[p.b]].ko} · ${tenGod(ds, BRANCH_MAIN[p.b])}`,
+  }));
+  // 신강/신약: 나를 돕는 기운(비겁+인성) 개수, 월지는 가중치 2
+  const me = STEM_EL[ds];
+  let help = 0, total = 0;
+  P.forEach(([lab, p]) => {
+    if (!p) return;
+    [[p.s, lab === '일주' ? 0 : 1], [BRANCH_MAIN[p.b], lab === '월주' ? 2 : 1]].forEach(([st, w]) => {
+      total += w; const e = STEM_EL[st]; if (e === me || GEN[e] === me) help += w;
+    });
+  });
+  const strength = help / total >= 0.55 ? '신강(기운이 센 편)' : help / total <= 0.35 ? '신약(기운이 여린 편)' : '중화에 가까움';
+  const gods = {};
+  P.forEach(([lab, p]) => { if (!p) return; if (lab !== '일주') { const g = tenGod(ds, p.s); gods[g] = (gods[g] || 0) + 1; } const g2 = tenGod(ds, BRANCH_MAIN[p.b]); gods[g2] = (gods[g2] || 0) + 1; });
+  const y = date.getMonth() + 1 < 2 || (date.getMonth() === 1 && date.getDate() < 4) ? date.getFullYear() - 1 : date.getFullYear();
+  const yp = pillar(mod(y - 4, 10), mod(y - 4, 12));
+  return {
+    pillars, 띠: s.animal,
+    일간: `${s.dayMaster.h}(${s.dayMaster.stem}) ${ELEMENTS[me].name} — ${s.dayMaster.desc}`,
+    태어난계절: `${SEASON[s.pillars.month.b]} (월지 ${BRANCHES_H[s.pillars.month.b]})`,
+    오행개수: Object.fromEntries(Object.entries(s.count).map(([k, n]) => [`${ELEMENTS[k].h}${ELEMENTS[k].ko}`, n])),
+    많은기운: ELEMENTS[s.dominant].h, 없는기운: s.lacking.map((k) => ELEMENTS[k].h).join(',') || '없음',
+    신강약: strength, 십성분포: gods,
+    시간모름: !s.pillars.hour,
+    올해: `${y}년 ${yp.h}(${yp.ko})년 — 천간 ${tenGod(ds, yp.s)}, 지지 ${tenGod(ds, BRANCH_MAIN[yp.b])}의 해`,
+  };
+}
