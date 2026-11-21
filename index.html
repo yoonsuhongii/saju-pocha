@@ -123,8 +123,10 @@
     <button id="btn-clap" class="act hidden">👏 박수</button>
     <button id="btn-request" class="act hidden">🎸 신청곡</button>
     <button id="btn-goplay" class="act hidden">🎭 연극 보러 가기</button>
+    <button id="btn-photo" class="act hidden">📸 사주네컷 찍기</button>
   </div>
   <div id="subtitle" class="subtitle hidden"></div>
+  <div id="title-card" class="title-card hidden"><div class="kicker">마로니에 야외무대 · 즉석 연극</div><b></b><span></span></div>
 
   <section id="theme-modal" class="overlay hidden">
     <div class="card modal-card">
@@ -169,6 +171,19 @@
         <button class="ghost" data-flavor="pizza">피자 붕어빵</button>
       </div>
       <button id="bungeo-close" class="ghost small">그냥 갈게요</button>
+    </div>
+  </section>
+
+  <div id="countdown" class="countdown hidden"></div>
+  <div id="flash" class="flash"></div>
+  <section id="photo-modal" class="overlay hidden">
+    <div class="card photo-card">
+      <div class="kicker">사주네컷 · 사주포차 포토부스</div>
+      <img id="photo-img" alt="사주네컷 사진" />
+      <div class="row center">
+        <a id="photo-save" class="primary small" download="사주네컷.png">💾 저장하기</a>
+        <button class="ghost small close-modal">닫기</button>
+      </div>
     </div>
   </section>
 

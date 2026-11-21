@@ -9,6 +9,7 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildStreet, PLAY_PRESETS } from './street.js';
+import { buildBooth, inBooth, composeStrip, BOOTH } from './photobooth.js';
 import { tickMusic, SONGS } from './music.js';
 import { buildScene, updateWeather, themeWeather, STAGE, OBSTACLES, drawStallSign, setStallColor, itemMesh, MENU, MENU_BY_ID, SNACK_BY_EL, BUNGEO_POS, STALL_COUNT, STALL_X, SEAT_OFFSETS, SEAT_Z, COUNTER_Z } from './scene.js';
 import { makeCharacter, animateCharacter, nameSprite, bubbleSprite, randomLook, randomName } from './character.js';
@@ -16,7 +17,7 @@ import { Player, Avatar, createInput } from './player.js';
 import { connect, botGuests, botChatter, mixWeather, ONLINE_CAPABLE } from './net.js';
 import { calcSaju, todayFortune, snackFor, sajuSummary, sajuDetail, luckContext, ELEMENTS, relation } from './saju.js';
 import { makePersona, counsel, stallDefault, neighbor, cleanChat, styleize, makePlay, makeTheme } from './ai.js';
-import { startAudio, setRain, clink, toggleSound, clap, honk, setVolume, isOn, VOL } from './audio.js';
+import { startAudio, setRain, clink, toggleSound, clap, honk, setVolume, isOn, VOL, sfx } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const qs = new URLSearchParams(location.search);
@@ -43,7 +44,8 @@ world.stalls.forEach((s) => { s.baseLight = s.light.intensity; });
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 let gtao = null;
-if (HIGH) { gtao = new GTAOPass(scene, camera, innerWidth, innerHeight); gtao.blendIntensity = 0.85; gtao.updateGtaoMaterial({ radius: 0.5, distanceFallOff: 1, thickness: 1 }); composer.addPass(gtao); }
+if (HIGH) { gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  gtao.overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.isSprite || (o.material && o.material.transparent)) o.visible = false; }); }; gtao.blendIntensity = 0.85; gtao.updateGtaoMaterial({ radius: 0.5, distanceFallOff: 1, thickness: 1 }); composer.addPass(gtao); }
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), HIGH ? 0.7 : 0.55, 0.6, 0.86);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -150,6 +152,7 @@ function enter() {
   player.colliders = () => {
     const list = OBSTACLES.slice();
     street.colliders().forEach((c) => list.push(c));
+    booth.walls.forEach((c) => list.push(c));
     avatars.forEach((av) => { const p = av.group.position; if (Math.abs(p.z - SEAT_Z - 0.08) > 0.05) list.push({ x: p.x, z: p.z, r: 0.3, kind: 'person' }); });
     return list;
   };
@@ -183,6 +186,7 @@ function enter() {
     onTheme: (t, by) => { if (t && t.at) applyTheme({ ...t, by }); },
     onPlay: (p) => startPlay(p),
     onBusk: (r) => { buskReq = r; toast(`🎸 ${r.by || '누군가'}님의 신청곡이 흘러나와요`); },
+    onPhoto: (p) => startPhoto(p),
     onClap: (p) => { const av = avatars.get(p.id); if (av) { const peer = net.peers.get(p.id); if (peer) peer.waveUntil = performance.now() + 1500; } if (player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 20) clap(0.6); },
     onBungeo: (p) => {
       bungeoTally[p.flavor] = (bungeoTally[p.flavor] || 0) + 1;
@@ -777,24 +781,58 @@ $('play-form').onsubmit = async (e) => {
   $('play-modal').classList.add('hidden');
   bubbleOn(street.barker, '작가님이 대본 쓰는 중이에요! ✍️', 6000);
   toast('🎭 AI 작가가 대본을 쓰는 중…');
-  const script = (await makePlay(topic, theme ? theme.title : ELEMENTS[weatherEl]?.weather)) || PLAY_PRESETS[Math.floor(Math.random() * PLAY_PRESETS.length)];
+  const script = (await makePlay(topic, theme ? theme.title : ELEMENTS[weatherEl]?.weather)) || JSON.parse(JSON.stringify(PLAY_PRESETS[Math.floor(Math.random() * PLAY_PRESETS.length)]));
   const p = { script, startAt: Date.now() + 6000, by: me.name };
   startPlay(p); net.play(p);
   playBusy = false;
 };
 $('btn-goplay').onclick = () => { if (!player) return; if (player.seat) stand(); player.pos.set(STAGE.x - 1 + Math.random() * 2, 0, STAGE.z + 8.5); player.yaw = 0; player.pitch = 0.25; player.dist = 7; };
+const nearStage = () => player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 26;
+function showSub(name, text, narr = false) {
+  if (!nearStage()) return;
+  const sub = $('subtitle'); sub.innerHTML = '';
+  if (narr) { const i = document.createElement('i'); i.textContent = `(해설) ${text}`; sub.appendChild(i); }
+  else { const b = document.createElement('b'); b.textContent = `${name}  `; sub.appendChild(b); sub.appendChild(document.createTextNode(text)); }
+  sub.classList.remove('hidden');
+}
+street.theater.bubble = (t) => bubbleSprite(t);
+street.theater.onReact = (k) => { if (nearStage() && k === 'clap') clap(0.8); if (nearStage() && k === 'laugh') sfx('laugh'); };
+let watchCam = true, lastDragAt = 0;
 function startPlay(p) {
   if (street.play) return;
-  street.startPlay(p.script, p.startAt, (actor, text, ms, ln) => {
-    bubbleOn(actor, text, ms);
-    const name = p.script.cast[ln.who]?.name || '';
-    const near = player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 26;
-    if (near) { const sub = $('subtitle'); sub.innerHTML = ''; const b = document.createElement('b'); b.textContent = `${name}  `; sub.appendChild(b); sub.appendChild(document.createTextNode(text)); sub.classList.remove('hidden'); }
+  watchCam = true;
+  street.startPlay(p.script, p.startAt, {
+    title: (sc) => { if (!nearStage()) return; const tc = $('title-card'); tc.querySelector('b').textContent = `「${sc.title}」`; tc.querySelector('span').textContent = `📍 ${sc.place || '대학로'} · 출연 ${sc.cast.map((c) => c.name).join(', ')}`; tc.classList.remove('hidden'); tc.classList.add('show'); setTimeout(() => { tc.classList.remove('show'); setTimeout(() => tc.classList.add('hidden'), 600); }, 3200); },
+    line: (actor, ln, sc) => {
+      const dur = Math.min(6.2, Math.max(2.6, 2.0 + String(ln.text).length * 0.075)) * 1000;
+      if (ln.who < 0 || !actor) { showSub('', ln.text, true); return; }
+      bubbleOn(actor, ln.text, dur);
+      showSub(sc.cast[ln.who]?.name || '', ln.text);
+    },
+    sfx: (k) => { if (nearStage()) sfx(k); },
+    curtainCall: (sc) => { if (nearStage()) { showSub('', `「${sc.title}」 — 끝. 배우들이 인사합니다!`, true); clap(); } },
+    end: () => { $('subtitle').classList.add('hidden'); if (nearStage()) toast(`👏 「${p.script.title}」 공연 끝! 박수~`); },
   });
-  street.play.end = () => { $('subtitle').classList.add('hidden'); const near = player && player.pos.distanceTo(new THREE.Vector3(STAGE.x, 0, STAGE.z)) < 26; if (near) { clap(); toast(`👏 「${p.script.title}」 공연 끝! 박수~`); } };
   toast(`🎭 ${p.by ? p.by + '님이 연 ' : ''}즉석 연극 「${p.script.title}」 곧 시작! (마로니에 야외무대)`);
   bubbleOn(street.barker, `「${p.script.title}」 곧 시작해요~!`, 5000);
 }
+// 관람 카메라: 공연 중 무대 근처에 있으면 객석에서 말하는 배우를 비춤 (드래그하면 해제)
+const camTmp = new THREE.Vector3(), lookTmp = new THREE.Vector3(STAGE.x, 1.8, STAGE.z - 1.5);
+function watchCamera(dt, now) {
+  const on = !!(street.play && player && !player.seat && watchCam && nearStage() && now - lastDragAt >= 4000);
+  if (player) player.group.visible = !on; // 관람 중엔 내 캐릭터는 객석에 앉은 셈
+  if (player && on) player.marker.visible = false;
+  const fov = on ? 36 : 55;
+  if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 2); camera.updateProjectionMatrix(); }
+  if (!on) return false;
+  const sp = street.theater.speakerPos() || new THREE.Vector3(STAGE.x, 1.8, STAGE.z - 1.5);
+  camTmp.set(STAGE.x + (sp.x - STAGE.x) * 0.4 + Math.sin(now / 4000) * 0.6, 2.9, STAGE.z + 6.8);
+  camera.position.lerp(camTmp, Math.min(1, dt * 1.5));
+  lookTmp.lerp(sp, Math.min(1, dt * 2.5));
+  camera.lookAt(lookTmp);
+  return true;
+}
+canvas.addEventListener('pointerdown', () => { if (street.play) lastDragAt = performance.now(); });
 
 function tickStreet(dt, now, nowSec) {
   street.update(nowSec, dt, now, player && !player.seat ? player.pos : null);
@@ -811,12 +849,89 @@ function tickStreet(dt, now, nowSec) {
     const nearBooth = !player.seat && Math.hypot(player.pos.x + 1.2, player.pos.z - 8.9) < 2.6;
     $('btn-ticket').classList.toggle('hidden', !nearBooth);
     $('btn-goplay').classList.toggle('hidden', !street.play || d < 20);
+    $('btn-photo').classList.toggle('hidden', !inBooth(player.pos.x, player.pos.z) || player.seat || !!(photo && !photo.done));
     // 열차 도착 알림
     if (street.rush >= 0 && street.rush !== lastRush) { lastRush = street.rush; if (Math.abs(player.pos.x - 28) < 35 && player.pos.z > -1) toast('🚇 혜화역에 열차 도착 — 사람들이 쏟아져 나와요'); }
     // 차도에 서 있으면 빵빵
     if (!player.seat && street.nearCar(player.pos.x, player.pos.z) && now > honkT) { honkT = now + 3000; honk(); toast('🚕 빵빵! 차 조심해요'); }
     if (player.bumped === 'person' && now > bumpT) { bumpT = now + 2500; if (Math.random() < 0.5) toast('앗, 죄송합니다! 🙇'); }
   }
+}
+
+// ---------------- 사주네컷 포토부스 ----------------
+const booth = buildBooth(scene);
+const POSES = ['wave', 'cheer', 'grab', 'cheer'];
+const POSE_TXT = ['손 흔들기 👋', '만세 🙌', '한 손 번쩍 ☝️', '마지막! 다 같이 🙌'];
+let photo = null; // { at, by, shots: [], times: [], done }
+function shotTimes(at) { return [at + 3500, at + 6500, at + 9500, at + 12500]; }
+$('btn-photo').onclick = () => {
+  if (photo && !photo.done) return;
+  const p = { at: Date.now() + 600, by: me.name };
+  startPhoto(p); net.photo(p);
+};
+function startPhoto(p) {
+  if (photo && !photo.done && Math.abs(photo.at - p.at) < 15000) return;
+  photo = { ...p, shots: [], times: shotTimes(p.at), idx: 0, done: false, names: new Set() };
+  if (player && inBooth(player.pos.x, player.pos.z)) toast(`📸 ${p.by === me.name ? '' : p.by + '님이 '}사주네컷 촬영 시작! 부스 안에 있으면 같이 찍혀요`);
+  else if (player && player.pos.distanceTo(new THREE.Vector3(BOOTH.x, 0, BOOTH.z)) < 20) toast(`📸 ${p.by}님이 사주네컷을 찍어요 — 부스로 들어가면 같이 찍혀요!`);
+}
+function boothPeople() {
+  const list = [];
+  if (player && !player.seat && inBooth(player.pos.x, player.pos.z)) list.push({ kind: 'me', name: me.name, body: player.body, group: player.group });
+  avatars.forEach((av, id) => { const p = av.group.position; if (inBooth(p.x, p.z)) list.push({ kind: 'av', name: av.name, body: av.body, group: av.group }); });
+  return list;
+}
+function capture() {
+  const W = renderer.domElement.width, H = renderer.domElement.height;
+  booth.cam.aspect = W / H; booth.cam.updateProjectionMatrix();
+  const hidden = [];
+  scene.traverse((o) => { if (o.isSprite && o.visible) { hidden.push(o); o.visible = false; } });
+  street.peds.forEach((p) => { if (p.char.visible && !inBooth(p.char.position.x, p.char.position.z)) { hidden.push(p.char); p.char.visible = false; } });
+  renderer.setRenderTarget(null);
+  renderer.render(scene, booth.cam);
+  const cw = Math.min(W, H * 4 / 3), ch = cw * 3 / 4;
+  const c = document.createElement('canvas'); c.width = 440; c.height = 330;
+  c.getContext('2d').drawImage(renderer.domElement, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, 440, 330);
+  hidden.forEach((o) => { o.visible = true; });
+  return c;
+}
+function tickPhoto(now) {
+  if (!photo || photo.done) return;
+  const t = Date.now(), mine = player && inBooth(player.pos.x, player.pos.z);
+  const next = photo.times[photo.idx];
+  // 카운트다운
+  const cd = $('countdown');
+  const left = (next - t) / 1000;
+  if (mine && left > 0 && left <= 3) { cd.innerHTML = `${Math.ceil(left)}<small>${POSE_TXT[photo.idx]}</small>`; cd.classList.remove('hidden'); }
+  else cd.classList.add('hidden');
+  // 포즈 (찍기 직전~직후)
+  if (left < 1.4 && left > -0.5) {
+    boothPeople().forEach((p) => {
+      p.group.rotation.y = Math.PI; // 카메라 쪽
+      const pose = POSES[photo.idx];
+      animateCharacter(p.body, { wave: pose === 'wave', cheer: pose === 'cheer', grab: pose === 'grab' }, now);
+      photo.names.add(p.name);
+    });
+  }
+  if (t >= next) {
+    if (mine) {
+      photo.shots.push(capture());
+      const f = $('flash'); f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 60);
+      clink();
+    }
+    booth.flash.intensity = 25;
+    photo.idx++;
+    if (photo.idx >= photo.times.length) {
+      photo.done = true; cd.classList.add('hidden');
+      if (photo.shots.length) {
+        const strip = composeStrip(photo.shots, { names: [...photo.names], dominant: me.saju?.dominant });
+        const url = strip.toDataURL('image/png');
+        $('photo-img').src = url; $('photo-save').href = url;
+        setTimeout(() => $('photo-modal').classList.remove('hidden'), 700);
+      }
+    }
+  }
+  booth.flash.intensity *= 0.85;
 }
 
 // ---------------- 루프 ----------------
@@ -871,6 +986,8 @@ function frame() {
   viewOff.x += (ox - viewOff.x) * Math.min(1, dt * 4); viewOff.y += (oy - viewOff.y) * Math.min(1, dt * 4);
   if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.5) camera.setViewOffset(W, H, viewOff.x, viewOff.y, W, H); else camera.clearViewOffset();
   tickStreet(dt, now, nowSec);
+  watchCamera(dt, now);
+  tickPhoto(now);
   { const f = player ? player.pos : camera.position; world.key.target.position.set(f.x, 0, f.z); world.key.position.set(f.x + 6, 14, f.z + 10); }
   updateWeather(world.weather, world, theme ? themeWeather(theme) : weatherEl, dt, now);
   setRain(world.weather.cur.rain);
@@ -881,4 +998,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // 테스트·시연용 핸들
-window.__sp = { street, requestTheme, startPlay, get theme() { return theme; }, kitchenOf, get lastAll() { return lastAll; }, me, cheersWith, openCheersPick, stallState, order, sendChat, buyBungeo, showTab, get nearBungeo() { return nearBungeo; }, get player() { return player; }, stallState, world, sit, stand, ask, restyle, showCard, get nearSeat() { return nearSeat; }, avatars, relation };
+window.__sp = { startPhoto, booth, get photo() { return photo; }, street, requestTheme, startPlay, get theme() { return theme; }, kitchenOf, get lastAll() { return lastAll; }, me, cheersWith, openCheersPick, stallState, order, sendChat, buyBungeo, showTab, get nearBungeo() { return nearBungeo; }, get player() { return player; }, stallState, world, sit, stand, ask, restyle, showCard, get nearSeat() { return nearSeat; }, avatars, relation };

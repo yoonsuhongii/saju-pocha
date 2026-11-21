@@ -164,13 +164,32 @@ export function cleanChat(t) {
 // ---------------- 즉석 연극 ----------------
 export async function makePlay(topic, mood) {
   try {
-    const j = await post('/api/play', { topic, mood }, 30000);
+    const j = await post('/api/play', { topic, mood }, 40000);
     if (!j?.lines?.length || !j?.cast?.length) throw new Error('bad');
     const n = Math.min(3, j.cast.length);
+    const hex = (v, d) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : d);
+    const ACTS = ['talk', 'wave', 'cheer', 'jump', 'sit', 'bow', 'cry', 'laugh', 'angry', 'surprise', 'think', 'dance', 'point', 'hug', 'fall', 'walk'];
+    const PROPS = ['bench', 'table', 'lamp', 'tree', 'busstop', 'desk', 'pocha', 'door', 'moon', 'stars', 'flowers'];
+    const HAIR = ['short', 'bun', 'long', 'ponytail', 'perm', 'spiky', 'bald'];
+    const ACC = ['none', 'glasses', 'hat', 'beanie', 'catears', 'flower', 'towel', 'headscarf', 'crown'];
+    const SKINS = ['#ffe0c7', '#f2c9a0', '#e8b48a', '#d49b6e'];
     return {
-      title: String(j.title || '즉석 연극').slice(0, 14),
-      cast: j.cast.slice(0, n).map((c) => ({ name: String(c.name || '배우').slice(0, 10) })),
-      lines: j.lines.slice(0, 10).map((l) => ({ who: Math.max(0, Math.min(n - 1, +l.who || 0)), text: cleanChat(String(l.text || '…')).slice(0, 60), act: ['talk', 'wave', 'cheer', 'walk'].includes(l.act) ? l.act : 'talk' })),
+      title: cleanChat(String(j.title || '즉석 연극')).slice(0, 14), place: cleanChat(String(j.place || '대학로')).slice(0, 16),
+      bg: [hex(j.bg?.[0], '#1b1440'), hex(j.bg?.[1], '#d9822b')],
+      props: (Array.isArray(j.props) ? j.props : []).filter((p) => PROPS.includes(p)).slice(0, 4),
+      cast: j.cast.slice(0, n).map((c, i) => ({
+        name: cleanChat(String(c.name || '배우')).slice(0, 10),
+        look: { skin: SKINS[i % SKINS.length], hair: ['#2b1d14', '#5a3a22', '#1a1a1a'][i % 3], hairStyle: HAIR.includes(c.hair) ? c.hair : 'short', outfit: hex(c.outfit, ['#ff8fab', '#74c0fc', '#ffd43b'][i]), apron: null, accessory: ACC.includes(c.accessory) ? c.accessory : 'none', accessoryColor: ['#ffd43b', '#ffffff', '#ff6b6b'][i], height: 1, eyes: i % 2 ? 'line' : 'dot' },
+      })),
+      lines: j.lines.slice(0, 14).map((l) => ({
+        who: Number(l.who) < 0 ? -1 : Math.max(0, Math.min(n - 1, Number(l.who) || 0)),
+        text: cleanChat(String(l.text || '…')).slice(0, 60),
+        act: ACTS.includes(l.act) ? l.act : 'talk',
+        to: ['left', 'center', 'right', 'front', 'back', 'frontleft', 'frontright'].includes(l.to) ? l.to : undefined,
+        emote: typeof l.emote === 'string' ? [...l.emote][0] : undefined,
+        sfx: ['rimshot', 'chime', 'whoosh', 'boing', 'sad', 'drumroll'].includes(l.sfx) ? l.sfx : undefined,
+        react: ['laugh', 'gasp', 'aww', 'clap'].includes(l.react) ? l.react : 'none',
+      })),
     };
   } catch { return null; }
 }

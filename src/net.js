@@ -9,10 +9,10 @@ const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const CAPACITY = 24;
 export const ONLINE_CAPABLE = !!(URL && KEY);
 
-export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBungeo, onTheme, onPlay, onBusk, onClap }) {
+export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBungeo, onTheme, onPlay, onBusk, onClap, onPhoto }) {
   const peers = new Map();
   let channel = null, alive = true, lastTrack = 0, pending = null, roomNo = 1;
-  if (!ONLINE_CAPABLE) { onStatus({ online: false, room: 0 }); return { peers, update() {}, move() {}, stall() {}, cheers() {}, say() {}, bungeo() {}, theme() {}, play() {}, busk() {}, clap() {}, close() {}, room: () => 0 }; }
+  if (!ONLINE_CAPABLE) { onStatus({ online: false, room: 0 }); return { peers, update() {}, move() {}, stall() {}, cheers() {}, say() {}, bungeo() {}, theme() {}, play() {}, busk() {}, clap() {}, photo() {}, close() {}, room: () => 0 }; }
   const client = createClient(URL, KEY, { realtime: { params: { eventsPerSecond: 20 } } });
 
   function join(n) {
@@ -57,6 +57,7 @@ export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBun
       .on('broadcast', { event: 'play' }, ({ payload }) => onPlay?.(payload))
       .on('broadcast', { event: 'busk' }, ({ payload }) => onBusk?.(payload))
       .on('broadcast', { event: 'clap' }, ({ payload }) => onClap?.(payload))
+      .on('broadcast', { event: 'photo' }, ({ payload }) => onPhoto?.(payload))
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') { await channel.track({ ...me.public(), online_at: me.joinedAt }); onStatus({ online: true, room: n, count: 1 }); }
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') onStatus({ online: false, room: n });
@@ -78,6 +79,7 @@ export function connect(me, { onPeers, onStatus, onStall, onCheers, onSay, onBun
     theme(t) { channel?.send({ type: 'broadcast', event: 'theme', payload: t }); },
     play(p) { channel?.send({ type: 'broadcast', event: 'play', payload: p }); },
     busk(b) { channel?.send({ type: 'broadcast', event: 'busk', payload: b }); },
+    photo(p) { channel?.send({ type: 'broadcast', event: 'photo', payload: p }); },
     clap() { channel?.send({ type: 'broadcast', event: 'clap', payload: { id: me.id } }); },
     bungeo(flavor) { channel?.send({ type: 'broadcast', event: 'bungeo', payload: { id: me.id, flavor } }); },
     cheers(stall, to) { channel?.send({ type: 'broadcast', event: 'cheers', payload: { id: me.id, stall, to } }); },

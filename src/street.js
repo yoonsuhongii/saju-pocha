@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import { makeCharacter, animateCharacter, nameSprite, randomLook } from './character.js';
 import { STAGE } from './scene.js';
+import { createTheater, PLAY_PRESETS } from './theater.js';
+export { PLAY_PRESETS };
 
 const h = (n) => { const x = Math.sin(n * 91.7 + 13.3) * 43758.5453; return x - Math.floor(x); };
 const mod = (a, n) => ((a % n) + n) % n;
@@ -73,8 +75,7 @@ export function buildStreet(scene, { high = true } = {}) {
   bs.position.set(0, 1.25, -0.31); bs.rotation.y = Math.PI; booth.add(bs);
   booth.position.set(-0.6, 0, 9.9); scene.add(booth);
   // ---------- 연극 배우 ----------
-  const actors = [0, 1, 2].map(() => { const c = makeCharacter(randomLook(Math.random)); c.visible = false; scene.add(c); return c; });
-  const actorTags = [];
+  const theater = createTheater(scene, { high, busker });
   // ---------- 테마 장식 + 현수막 ----------
   const decor = new THREE.Group(); scene.add(decor);
   const bannerCanvas = document.createElement('canvas'); bannerCanvas.width = 1024; bannerCanvas.height = 128;
@@ -85,8 +86,8 @@ export function buildStreet(scene, { high = true } = {}) {
 
   let pedPalette = null;
   const S = {
-    peds, cars, busker, barker, actors,
-    play: null,
+    peds, cars, busker, barker, theater,
+    get play() { return theater.play; },
     rushId: -1,
     update(nowSec, dt, now, me) {
       // 행인
@@ -129,11 +130,12 @@ export function buildStreet(scene, { high = true } = {}) {
       const aside = !!S.play;
       busker.position.x += ((aside ? STAGE.x + 4.5 : STAGE.x) - busker.position.x) * Math.min(1, dt * 2);
       animateCharacter(busker, { cook: !aside, talk: !aside }, now);
+      busker.visible = !aside;
       busker.rotation.y = aside ? -0.6 : Math.sin(now / 1500) * 0.15;
       animateCharacter(barker, { wave: Math.sin(now / 900) > 0.4, talk: true }, now);
       barker.rotation.y = Math.PI + Math.sin(now / 1300) * 0.3;
       // 연극
-      if (S.play) S.updatePlay(Date.now(), now);
+      theater.update(Date.now(), now, dt);
     },
     nearCar(x, z) { return cars.some((c) => c.braking || (Math.abs(c.mesh.position.x - x) < 2.6 && Math.abs(c.lane - z) < 1.2)); },
     carBoxes() { return cars.map((c) => ({ x: c.mesh.position.x, z: c.lane, hx: c.isBike ? 0.8 : 1.85, hz: c.isBike ? 0.35 : 0.85 })); },
@@ -146,40 +148,7 @@ export function buildStreet(scene, { high = true } = {}) {
     },
 
     // ---------- 연극 ----------
-    startPlay(script, startAt, say) {
-      S.play = { script, startAt, say, shown: -1 };
-      actorTags.forEach((t) => t.parent?.remove(t)); actorTags.length = 0;
-      script.cast.slice(0, 3).forEach((c, i) => {
-        const a = makeCharacter(c.look || randomLook(Math.random));
-        scene.remove(actors[i]); actors[i] = a; scene.add(a);
-        a.position.set(STAGE.x - 1.6 + i * 1.6, 0.6, STAGE.z - 1.6); a.rotation.y = 0; a.visible = true;
-        const tag = nameSprite(`🎭 ${c.name}`, { bg: 'rgba(120,20,60,0.85)', scale: 0.8 }); tag.position.y = 1.95; a.add(tag); actorTags.push(tag);
-      });
-    },
-    LINE_SEC: 4.2,
-    updatePlay(nowMs, now) {
-      const P = S.play, t = (nowMs - P.startAt) / 1000;
-      const lines = P.script.lines, n = lines.length;
-      if (t < 0) return;
-      const idx = Math.floor(t / S.LINE_SEC);
-      actors.forEach((a, i) => {
-        if (!a.visible) return;
-        const ln = lines[Math.min(idx, n - 1)];
-        const speaking = idx < n && ln.who === i;
-        const act = speaking ? ln.act : null;
-        const ending = idx >= n;
-        animateCharacter(a, { talk: speaking, wave: act === 'wave', cheer: act === 'cheer' || ending, walking: act === 'walk', phase: now / 120 }, now);
-        a.position.x = STAGE.x - 1.6 + i * 1.6 + (act === 'walk' ? Math.sin(now / 600) * 0.5 : 0);
-        a.rotation.y = speaking ? 0 : (ln && ln.who !== i ? Math.atan2((STAGE.x - 1.6 + ln.who * 1.6) - a.position.x, 0.3) * 0.6 : 0);
-        if (ending) a.rotation.x = Math.sin((t - n * S.LINE_SEC) * 2) > 0 ? 0.35 : 0; // 인사
-      });
-      if (idx !== P.shown && idx < n) {
-        P.shown = idx;
-        const ln = lines[idx];
-        if (actors[ln.who]) P.say(actors[ln.who], ln.text, S.LINE_SEC * 1000 - 200, ln);
-      }
-      if (t > n * S.LINE_SEC + 5) { actors.forEach((a) => { a.visible = false; a.rotation.x = 0; }); P.end?.(); S.play = null; }
-    },
+    startPlay(script, startAt, hooks) { theater.start(script, startAt, hooks); },
 
     // ---------- 테마 ----------
     applyTheme(th) {
@@ -291,24 +260,3 @@ export function buildStreet(scene, { high = true } = {}) {
   return S;
 }
 
-// 오프라인 연극 대본
-export const PLAY_PRESETS = [
-  { title: '막차는 떠나고', cast: [{ name: '취준생 민지' }, { name: '포차 사장' }, { name: '길고양이' }], lines: [
-    { who: 0, text: '아… 혜화역 막차 놓쳤다. 오늘 면접도 망쳤는데.', act: 'talk' },
-    { who: 1, text: '어이 학생, 막차 놓친 김에 어묵 국물이나 한 그릇 해.', act: 'wave' },
-    { who: 0, text: '사장님, 저 사주에 물 기운이 없대요. 그래서 이렇게 메마른 걸까요?', act: 'talk' },
-    { who: 2, text: '야옹… (국물 냄새를 맡고 다가온다)', act: 'walk' },
-    { who: 1, text: '물 기운 없으면 국물로 채우면 되지! 인생 별거 있나.', act: 'cheer' },
-    { who: 0, text: '…하하, 그러네요. 내일 면접은 첫차 타고 가면 돼요!', act: 'cheer' },
-    { who: 2, text: '야옹! (박수 대신 꼬리를 흔든다)', act: 'wave' },
-  ] },
-  { title: '붕어빵 전쟁', cast: [{ name: '팥붕파 대학생' }, { name: '슈붕파 직장인' }, { name: '붕어빵 할아버지' }], lines: [
-    { who: 0, text: '붕어빵은 팥이죠. 이건 전통이에요.', act: 'talk' },
-    { who: 1, text: '아니죠, 슈크림이야말로 2030년의 근본입니다.', act: 'talk' },
-    { who: 0, text: '그럼 이 거리 사람들한테 물어봐요!', act: 'wave' },
-    { who: 2, text: '허허, 싸우지들 말어. 오늘은 반반 줄게.', act: 'walk' },
-    { who: 1, text: '…반반이요? 그런 게 가능해요?', act: 'talk' },
-    { who: 2, text: '대학로에선 다 가능혀. 연극도 즉석으로 하는 동네여!', act: 'cheer' },
-    { who: 0, text: '팥붕 슈붕 화해 기념, 건배!', act: 'cheer' },
-  ] },
-];
